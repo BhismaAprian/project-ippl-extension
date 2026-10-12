@@ -7,7 +7,7 @@
  * Tujuan: core logic tidak perlu tahu detail marketplace spesifik.
  */
 
-export class BaseAdapter {
+class BaseAdapter {
     /**
     * Nama marketplace (lowercase, harus match dengan key di SUPPORTED_MARKETPLACES).
     * @returns {string}
@@ -46,3 +46,4 @@ export class BaseAdapter {
         throw new Error('extractProduct not yet implemented for week 1');
     }
 }
+window.BaseAdapter = BaseAdapter;
