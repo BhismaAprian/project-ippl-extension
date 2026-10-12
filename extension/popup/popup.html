@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Intelligence</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🧠</span>
+                <span class="logo-text">Shopping Intelligence</span>
+            </div>
+            <span class="version" id="version">v0.1.0</span>
+        </header>
+
+        <!-- Status area -->
+        <main class="main">
+            <div class="status" id="status">
+                <div class="spinner" id="spinner"></div>
+                <p class="status-text" id="statusText">Memeriksa halaman...</p>
+            </div>
+
+            <!-- Result area (akan muncul kalau halaman valid) -->
+            <div class="result hidden" id="result">
+                <div class="result-header">
+                    <span class="result-badge" id="resultBadge">✓</span>
+                    <span class="result-title" id="resultTitle">Halaman produk terdeteksi</span>
+                </div>
+                <div class="result-body">
+                    <p class="result-detail" id="resultDetail"></p>
+                </div>
+                <button class="btn-primary" id="analyzeBtn" disabled>
+                    Analisis Produk
+                </button>
+                <p class="hint">Fitur analisis akan tersedia di minggu berikutnya.</p>
+            </div>
+
+            <!-- Error area -->
+            <div class="error hidden" id="error">
+                <div class="error-icon">⚠️</div>
+                <p class="error-text" id="errorText">Terjadi kesalahan.</p>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Sebelum checkout, cek dulu.</p>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
