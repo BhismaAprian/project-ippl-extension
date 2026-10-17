@@ -70,5 +70,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'UNDERSTAND_PRODUCT') {
+        const ai = new window.AIClient();
+        ai.understandProduct(request.product)
+            .then((aiData) => {
+                sendResponse({ success: true, aiData: aiData });
+            })
+            .catch((e) => {
+                sendResponse({ success: false, aiData: null, error: e.message });
+            });
+        return true;
+    }
+
     return true;
 });
