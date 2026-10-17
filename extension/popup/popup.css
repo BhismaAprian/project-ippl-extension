@@ -1,4 +1,6 @@
-/* Reset & base */
+/* ============================
+   Base
+   ============================ */
 * {
     margin: 0;
     padding: 0;
@@ -6,21 +8,22 @@
 }
 
 body {
-    width: 360px;
-    min-height: 400px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    color: #1a1a1a;
-    background: #f8f9fa;
+    width: 650px;
+    font-family: system-ui;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 10px;
 }
 
-.container {
+.app {
     display: flex;
     flex-direction: column;
-    min-height: 400px;
+    gap: 10px;
 }
 
-/* Header */
+/* ============================
+   Header
+   ============================ */
 .header {
     display: flex;
     justify-content: space-between;
@@ -28,6 +31,7 @@ body {
     padding: 12px 16px;
     background: linear-gradient(135deg, #ee4d2d 0%, #d73211 100%);
     color: white;
+    border-radius: 8px;
 }
 
 .logo {
@@ -37,38 +41,90 @@ body {
 }
 
 .logo-icon {
-    font-size: 18px;
+    font-size: 20px;
 }
 
 .logo-text {
     font-weight: 600;
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .version {
-    font-size: 11px;
+    font-size: 12px;
     opacity: 0.85;
 }
 
-/* Main */
-.main {
-    flex: 1;
-    padding: 20px 16px;
+/* ============================
+   Reanalyze button
+   ============================ */
+#reanalyzeBtn {
+    padding: 10px 14px;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: background 0.2s;
 }
 
-/* Status */
+#reanalyzeBtn:hover {
+    background: #1663c7;
+}
+
+#reanalyzeBtn:disabled {
+    background: #b7c7dd;
+    cursor: not-allowed;
+}
+
+/* ============================
+   Card
+   ============================ */
+.card {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid #ececec;
+}
+
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 10px;
+}
+
+.source-badge {
+    margin-left: auto;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: #ee4d2d;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+/* ============================
+   Status / Error
+   ============================ */
 .status {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    padding: 40px 0;
+    padding: 60px 0;
 }
 
 .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #f3f3f3;
+    width: 36px;
+    height: 36px;
+    border: 3px solid #eee;
     border-top: 3px solid #ee4d2d;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -85,19 +141,35 @@ body {
     font-size: 13px;
 }
 
-/* Result */
-.result {
-    background: white;
-    border-radius: 8px;
-    padding: 16px;
-    border: 1px solid #e5e5e5;
+.error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 50px 20px;
+    text-align: center;
 }
 
+.error-icon {
+    font-size: 36px;
+}
+
+.error-text {
+    color: #856404;
+    background: #fff3cd;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+/* ============================
+   Result header
+   ============================ */
 .result-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
 }
 
 .result-badge {
@@ -119,34 +191,34 @@ body {
 }
 
 .result-detail {
-    color: #666;
+    color: #888;
     font-size: 12px;
-    margin-bottom: 16px;
-    word-break: break-all;
+    margin-bottom: 12px;
+    word-break: break-word;
 }
 
-/* Product detail */
-.product {
-    margin: 4px 0 16px;
-    padding: 12px;
-    background: #fafafa;
-    border: 1px solid #eee;
-    border-radius: 8px;
+.results {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
+/* ============================
+   Original product
+   ============================ */
 .product-top {
     display: flex;
-    gap: 10px;
+    gap: 14px;
     align-items: flex-start;
 }
 
 .product-image {
-    width: 64px;
-    height: 64px;
+    width: 96px;
+    height: 96px;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: 8px;
     border: 1px solid #eee;
-    background: white;
+    background: #fafafa;
     flex-shrink: 0;
 }
 
@@ -155,20 +227,16 @@ body {
     min-width: 0;
 }
 
-.product-title {
-    font-size: 13px;
+.product-name {
+    font-size: 15px;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.4;
     color: #1a1a1a;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
 }
 
 .product-price {
-    margin-top: 6px;
-    font-size: 16px;
+    margin-top: 8px;
+    font-size: 20px;
     font-weight: 700;
     color: #ee4d2d;
 }
@@ -176,13 +244,13 @@ body {
 .product-badges {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 5px;
+    margin-top: 8px;
 }
 
 .badge {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: 10px;
     background: #ee4d2d;
     color: white;
@@ -194,10 +262,10 @@ body {
 .product-meta {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #eee;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #f0f0f0;
 }
 
 .meta-item {
@@ -211,10 +279,11 @@ body {
     font-size: 10px;
     color: #999;
     text-transform: uppercase;
+    letter-spacing: 0.4px;
 }
 
 .meta-value {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: #1a1a1a;
     overflow: hidden;
@@ -222,28 +291,29 @@ body {
     white-space: nowrap;
 }
 
-.product-specs {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #eee;
-}
-
-.specs-title {
-    font-size: 11px;
+.section-subtitle {
+    font-size: 12px;
     color: #999;
     text-transform: uppercase;
+    letter-spacing: 0.4px;
     margin-bottom: 8px;
+}
+
+.product-specs {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #f0f0f0;
 }
 
 .specs-grid {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 4px 12px;
+    gap: 5px 14px;
     font-size: 12px;
 }
 
 .specs-grid dt {
-    color: #666;
+    color: #777;
 }
 
 .specs-grid dd {
@@ -252,72 +322,204 @@ body {
     word-break: break-word;
 }
 
-/* Button */
-.btn-primary {
-    width: 100%;
-    padding: 10px;
-    background: #ee4d2d;
-    color: white;
-    border: none;
+/* ============================
+   AI understanding
+   ============================ */
+.ai-block {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.ai-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px 14px;
+    font-size: 13px;
+    color: #444;
+}
+
+.ai-specs-label {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #444;
+}
+
+.ai-specs {
+    margin-top: 4px;
+    background: #f9f9f9;
+    padding: 8px 12px;
     border-radius: 6px;
+    font-size: 12px;
+    color: #555;
+}
+
+.ai-specs ul {
+    margin: 0;
+    padding-left: 16px;
+}
+
+/* ============================
+   Search result cards
+   ============================ */
+.search-card {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+    border: 1px solid #eee;
+    border-left: 4px solid #ccc;
+}
+
+.search-card.badge-mismatch {
+    border-left-color: #dc3545;
+}
+
+.search-card.badge-cheaper {
+    border-left-color: #28a745;
+}
+
+.search-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.market-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.market-tokopedia {
+    background: #03ac0e;
+}
+
+.market-lazada {
+    background: #0f146d;
+}
+
+.market-blibli {
+    background: #d81e05;
+}
+
+.market-other {
+    background: #6c757d;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.status-badge.red {
+    background: #fde8ea;
+    color: #b02a37;
+}
+
+.status-badge.green {
+    background: #e6f7ea;
+    color: #1e7e34;
+}
+
+.status-badge.gray {
+    background: #eef1f4;
+    color: #495057;
+}
+
+.search-title {
+    font-weight: 600;
+    color: #222;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.search-snippet {
+    color: #888;
+    font-size: 12px;
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.search-price {
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a1a1a;
+}
+
+.search-price.missing {
+    font-size: 12px;
+    font-weight: 500;
+    color: #999;
+    font-style: italic;
+}
+
+.search-link {
+    display: inline-block;
+    margin-top: 8px;
+    color: #1a73e8;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.search-link:hover {
+    text-decoration: underline;
+}
+
+/* ============================
+   AI Recommendation box
+   ============================ */
+.reco-box {
+    padding: 14px 16px;
+    border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
+    line-height: 1.5;
 }
 
-.btn-primary:hover:not(:disabled) {
-    background: #d73211;
+.reco-box.reco-good {
+    background: #e6f7ea;
+    color: #1e7e34;
+    border: 1px solid #b7e4c2;
 }
 
-.btn-primary:disabled {
-    background: #ccc;
-    cursor: not-allowed;
+.reco-box.reco-warning {
+    background: #fff8e1;
+    color: #8a6d00;
+    border: 1px solid #ffe69c;
 }
 
-.hint {
-    text-align: center;
-    color: #999;
-    font-size: 11px;
-    margin-top: 8px;
+.reco-box.reco-bad {
+    background: #fde8ea;
+    color: #b02a37;
+    border: 1px solid #f5c2c7;
 }
 
-/* Error */
-.error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 40px 16px;
-    text-align: center;
+.reco-box.reco-info {
+    background: #eef1f4;
+    color: #495057;
+    border: 1px solid #dee2e6;
 }
 
-.error-icon {
-    font-size: 32px;
-}
-
-.error-text {
-    color: #856404;
-    background: #fff3cd;
-    padding: 12px 16px;
-    border-radius: 6px;
-    font-size: 13px;
-}
-
-/* Settings */
-.settings {
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid #e5e5e5;
-}
-
-.settings-title {
-    font-size: 12px;
-    text-transform: uppercase;
-    color: #999;
-    margin-bottom: 10px;
-}
-
+/* ============================
+   Settings
+   ============================ */
 .settings-label {
     display: block;
     font-size: 12px;
@@ -333,7 +535,7 @@ body {
 .settings-input {
     flex: 1;
     min-width: 0;
-    padding: 8px 10px;
+    padding: 9px 12px;
     border: 1px solid #ddd;
     border-radius: 6px;
     font-size: 13px;
@@ -345,7 +547,7 @@ body {
 }
 
 .btn-save {
-    padding: 8px 14px;
+    padding: 9px 18px;
     background: #ee4d2d;
     color: white;
     border: none;
@@ -371,12 +573,15 @@ body {
     color: #b02a37;
 }
 
-/* Footer */
+/* ============================
+   Footer
+   ============================ */
 .footer {
-    padding: 10px 16px;
+    padding: 12px 20px;
     text-align: center;
     border-top: 1px solid #e5e5e5;
     background: white;
+    border-radius: 8px;
 }
 
 .footer p {
@@ -385,7 +590,13 @@ body {
     font-style: italic;
 }
 
-/* Utility */
+/* ============================
+   Utility
+   ============================ */
+.muted {
+    color: #999;
+}
+
 .hidden {
     display: none !important;
 }

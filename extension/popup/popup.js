@@ -1,12 +1,11 @@
 /**
  * popup.js
- * 
- * Script ini berjalan di konteks popup (saat ikon extension diklik).
- * Tugasnya:
- * 1. Kirim pesan DETECT_PAGE ke content script di tab aktif
- * 2. Kalau halaman produk, kirim EXTRACT_PRODUCT
- * 3. Tampilkan hasil ekstraksi produk di UI
- * 4. Handle error kalau tab bukan halaman produk yang didukung
+ *
+ * Alur dengan cache:
+ * 1. Ambil tab aktif -> cacheKey = 'cache_' + tab.url
+ * 2. Kalau cache ada -> render langsung (tanpa panggil API)
+ * 3. Kalau tidak -> jalankan analisis (DETECT/EXTRACT/UNDERSTAND/SEARCH) -> simpan cache
+ * 4. Tombol "Analisis Ulang" -> hapus cache -> jalankan ulang
  */
 
 // === Referensi elemen DOM ===
@@ -18,8 +17,9 @@ const resultDetail = document.getElementById('resultDetail');
 const errorEl = document.getElementById('error');
 const errorText = document.getElementById('errorText');
 const versionEl = document.getElementById('version');
+const reanalyzeBtn = document.getElementById('reanalyzeBtn');
 
-const productEl = document.getElementById('product');
+const sourceBadge = document.getElementById('sourceBadge');
 const productImage = document.getElementById('productImage');
 const productTitleEl = document.getElementById('productTitle');
 const productPriceEl = document.getElementById('productPrice');
@@ -36,16 +36,18 @@ const aiCategoryEl = document.getElementById('aiCategory');
 const aiModelEl = document.getElementById('aiModel');
 const aiSpecsEl = document.getElementById('aiSpecs');
 
+const searchResultsEl = document.getElementById('searchResults');
+const recommendationBox = document.getElementById('recommendationBox');
+
 const groqKeyInput = document.getElementById('groqKeyInput');
 const saveKeyBtn = document.getElementById('saveKeyBtn');
 const settingsStatus = document.getElementById('settingsStatus');
 
 const aiClient = new window.AIClient();
 
-// Set versi dari manifest
 versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
 
-// === Fungsi UI Helper ===
+// === UI helpers ===
 function showStatus(text) {
     statusEl.classList.remove('hidden');
     resultEl.classList.add('hidden');
@@ -80,8 +82,17 @@ function sendMessage(tabId, message) {
     });
 }
 
-// === Settings: Groq API Key ===
+function getActiveTab() {
+    return chrome.tabs.query({ active: true, currentWindow: true })
+        .then((tabs) => (tabs && tabs[0]) ? tabs[0] : null);
+}
 
+function cacheKeyFor(tab) {
+    const idPart = tab.url || ('tabId_' + tab.id);
+    return 'cache_' + idPart;
+}
+
+// === Settings: Groq API Key ===
 function showSettingsStatus(text, ok = true) {
     settingsStatus.textContent = text;
     settingsStatus.classList.remove('hidden');
@@ -108,8 +119,7 @@ async function saveApiKey() {
     }
 }
 
-// === Format & Render Produk ===
-
+// === Format helpers ===
 function formatPrice(price, currency) {
     if (price === null || price === undefined || price === '') return '-';
     const value = Number(price);
@@ -131,6 +141,12 @@ function setText(el, value) {
     el.textContent = (value === null || value === undefined || value === '') ? '-' : value;
 }
 
+function capitalize(text) {
+    if (!text) return '-';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// === Render: Original Product ===
 function renderBadges(badges) {
     productBadgesEl.innerHTML = '';
     if (!Array.isArray(badges) || badges.length === 0) {
@@ -168,42 +184,10 @@ function renderSpecs(specifications) {
     });
 }
 
-function renderAiData(aiData) {
-    aiDataSection.classList.remove('hidden');
+function renderProduct(product, marketplace) {
+    if (!product) return;
 
-    if (!aiData || typeof aiData !== 'object') {
-        aiSpecsEl.textContent = 'AI analysis failed';
-        aiBrandEl.textContent = '-';
-        aiCategoryEl.textContent = '-';
-        aiModelEl.textContent = '-';
-        return;
-    }
-
-    setText(aiBrandEl, aiData.brand);
-    setText(aiCategoryEl, aiData.category);
-    setText(aiModelEl, aiData.model);
-
-    aiSpecsEl.innerHTML = '';
-    const specs = aiData.specifications;
-
-    if (specs && typeof specs === 'object' && Object.keys(specs).length > 0) {
-        const list = document.createElement('ul');
-        list.style.margin = '0';
-        list.style.paddingLeft = '16px';
-        Object.entries(specs).forEach(([key, value]) => {
-            const li = document.createElement('li');
-            const val = (value === null || value === undefined || value === '') ? '-' : value;
-            li.textContent = `${key}: ${val}`;
-            list.appendChild(li);
-        });
-        aiSpecsEl.appendChild(list);
-    } else {
-        aiSpecsEl.textContent = 'AI analysis failed';
-    }
-}
-
-function renderProduct(product) {
-    productEl.classList.remove('hidden');
+    sourceBadge.textContent = capitalize(marketplace);
 
     if (product.imageUrl) {
         productImage.src = product.imageUrl;
@@ -231,84 +215,290 @@ function renderProduct(product) {
     setText(productSellerEl, sellerName);
 
     renderSpecs(product.specifications);
-
-    aiDataSection.classList.add('hidden');
-    aiSpecsEl.innerHTML = '';
 }
 
-// === Fungsi Utama ===
+// === Render: AI Understanding ===
+function renderAiData(aiData) {
+    aiDataSection.classList.remove('hidden');
+
+    if (!aiData || typeof aiData !== 'object') {
+        aiBrandEl.textContent = '-';
+        aiCategoryEl.textContent = '-';
+        aiModelEl.textContent = '-';
+        aiSpecsEl.textContent = 'AI analysis failed';
+        return;
+    }
+
+    setText(aiBrandEl, aiData.brand);
+    setText(aiCategoryEl, aiData.category);
+    setText(aiModelEl, aiData.model);
+
+    aiSpecsEl.innerHTML = '';
+    const specs = aiData.specifications;
+
+    if (specs && typeof specs === 'object' && Object.keys(specs).length > 0) {
+        const list = document.createElement('ul');
+        Object.entries(specs).forEach(([key, value]) => {
+            const li = document.createElement('li');
+            const val = (value === null || value === undefined || value === '') ? '-' : value;
+            li.textContent = `${key}: ${val}`;
+            list.appendChild(li);
+        });
+        aiSpecsEl.appendChild(list);
+    } else {
+        aiSpecsEl.textContent = 'AI analysis failed';
+    }
+}
+
+// === Render: Smart Alternatives ===
+function marketClass(marketplace) {
+    switch (marketplace) {
+        case 'Tokopedia': return 'market-tokopedia';
+        case 'Lazada': return 'market-lazada';
+        case 'Blibli': return 'market-blibli';
+        default: return 'market-other';
+    }
+}
+
+function isCheaper(price, originalPrice) {
+    return price !== null && price !== undefined
+        && originalPrice !== null && originalPrice !== undefined
+        && price < originalPrice;
+}
+
+function buildSearchCard(item, originalPrice) {
+    const cheaper = isCheaper(item.price, originalPrice);
+    const mismatch = item.isSpecMatch === false;
+
+    const card = document.createElement('div');
+    card.className = 'search-card';
+    if (mismatch) card.classList.add('badge-mismatch');
+    else if (cheaper) card.classList.add('badge-cheaper');
+
+    const head = document.createElement('div');
+    head.className = 'search-head';
+
+    const market = document.createElement('span');
+    market.className = `market-badge ${marketClass(item.marketplace)}`;
+    market.textContent = item.marketplace || 'Other';
+    head.appendChild(market);
+
+    let statusBadge = null;
+    if (mismatch) {
+        statusBadge = { cls: 'red', text: 'Spec Berbeda' };
+    } else if (cheaper) {
+        statusBadge = { cls: 'green', text: 'Lebih Murah' };
+    } else {
+        statusBadge = { cls: 'gray', text: 'Spec Cocok' };
+    }
+
+    const badge = document.createElement('span');
+    badge.className = `status-badge ${statusBadge.cls}`;
+    badge.textContent = statusBadge.text;
+    head.appendChild(badge);
+
+    card.appendChild(head);
+
+    const title = document.createElement('div');
+    title.className = 'search-title';
+    title.textContent = item.title || '-';
+    card.appendChild(title);
+
+    const snippet = document.createElement('div');
+    snippet.className = 'search-snippet';
+    snippet.textContent = item.snippet || '';
+    card.appendChild(snippet);
+
+    const price = document.createElement('div');
+    if (item.price !== null && item.price !== undefined) {
+        price.className = 'search-price';
+        price.textContent = formatPrice(item.price, 'IDR');
+    } else {
+        price.className = 'search-price missing';
+        price.textContent = 'Harga tidak terdeteksi di Google snippet';
+    }
+    card.appendChild(price);
+
+    const link = document.createElement('a');
+    link.className = 'search-link';
+    link.href = item.url || '#';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `Buka di ${item.marketplace || 'Marketplace'}`;
+    card.appendChild(link);
+
+    return card;
+}
+
+function renderSearchResults(items, originalPrice) {
+    searchResultsEl.innerHTML = '';
+
+    if (!Array.isArray(items) || items.length === 0) {
+        const em = document.createElement('em');
+        em.className = 'muted';
+        em.textContent = 'Tidak ada alternatif ditemukan';
+        searchResultsEl.appendChild(em);
+        return;
+    }
+
+    items.forEach((item) => {
+        searchResultsEl.appendChild(buildSearchCard(item, originalPrice));
+    });
+}
+
+// === Render: AI Recommendation ===
+function renderRecommendation(items, originalPrice) {
+    recommendationBox.className = 'reco-box reco-info';
+
+    if (!Array.isArray(items) || items.length === 0) {
+        recommendationBox.textContent = 'Tidak ada alternatif untuk dibandingkan.';
+        return;
+    }
+
+    const cheaperMatch = items.find((i) => i.isSpecMatch && isCheaper(i.price, originalPrice));
+    const cheaperMismatch = items.find((i) => i.isSpecMatch === false && isCheaper(i.price, originalPrice));
+
+    if (cheaperMatch) {
+        recommendationBox.className = 'reco-box reco-good';
+        recommendationBox.textContent = `🔥 Ada alternatif lebih murah dengan spec cocok di ${cheaperMatch.marketplace} (${formatPrice(cheaperMatch.price, 'IDR')}).`;
+    } else if (cheaperMismatch) {
+        recommendationBox.className = 'reco-box reco-warning';
+        recommendationBox.textContent = '⚠️ Ada alternatif lebih murah, tapi spesifikasinya berbeda — periksa dengan teliti.';
+    } else {
+        recommendationBox.textContent = 'Tidak ada alternatif yang lebih murah dengan spec cocok.';
+    }
+}
+
+// === Render all (dari data lengkap / cache) ===
+function renderAll(data) {
+    showResult(`Halaman produk ${data.marketplace} terdeteksi`, data.reason || '');
+    renderProduct(data.product, data.marketplace);
+    renderAiData(data.aiData);
+    const originalPrice = data.product ? data.product.price : null;
+    renderSearchResults(data.searchResults, originalPrice);
+    renderRecommendation(data.searchResults, originalPrice);
+}
+
+// === Analisis (panggil API) ===
+async function runAnalysis(tab) {
+    const detection = await sendMessage(tab.id, { action: 'DETECT_PAGE' });
+
+    if (!detection) throw new Error('Tidak ada respons dari halaman.');
+    if (!detection.isProduct) throw new Error(detection.reason || 'Halaman tidak dikenali.');
+
+    showResult(`Halaman produk ${detection.marketplace} terdeteksi`, detection.reason);
+    showStatus('Mengekstrak data produk...');
+
+    const extraction = await sendMessage(tab.id, { action: 'EXTRACT_PRODUCT' });
+    if (!extraction || !extraction.success || !extraction.product) {
+        throw new Error((extraction && extraction.error) || 'Data produk tidak ditemukan di halaman ini.');
+    }
+
+    showResult(`Halaman produk ${detection.marketplace} terdeteksi`, detection.reason);
+    renderProduct(extraction.product, detection.marketplace);
+    showStatus('Menganalisis produk dengan AI...');
+
+    let aiData = null;
+    try {
+        const response = await sendMessage(tab.id, {
+            action: 'UNDERSTAND_PRODUCT',
+            product: extraction.product
+        });
+        aiData = response ? response.aiData : null;
+    } catch (aiError) {
+        console.error('[Shopping Intelligence] Analisis AI gagal:', aiError);
+    }
+    console.log("AI Result:", aiData);
+    renderAiData(aiData);
+
+    showStatus('Mencari alternatif...');
+
+    let searchResults = [];
+    try {
+        const searchResponse = await sendMessage(tab.id, {
+            action: 'SEARCH_ALTERNATIVES',
+            aiData: aiData,
+            product: extraction.product
+        });
+        searchResults = searchResponse ? searchResponse.alternatives : [];
+    } catch (searchError) {
+        console.error('[Shopping Intelligence] Pencarian alternatif gagal:', searchError);
+    }
+
+    const originalPrice = extraction.product ? extraction.product.price : null;
+    renderSearchResults(searchResults, originalPrice);
+    renderRecommendation(searchResults, originalPrice);
+
+    return {
+        marketplace: detection.marketplace,
+        reason: detection.reason,
+        product: extraction.product,
+        aiData: aiData,
+        searchResults: searchResults
+    };
+}
+
+// === Cache + init ===
+async function analyzeAndCache(tab) {
+    const cacheKey = cacheKeyFor(tab);
+    try {
+        const data = await runAnalysis(tab);
+        if (data) {
+            await chrome.storage.local.set({ [cacheKey]: data });
+        }
+    } catch (error) {
+        console.error('[Shopping Intelligence] Error:', error);
+        showError(error.message || 'Terjadi kesalahan tak terduga.');
+    }
+}
 
 async function init() {
     showStatus('Memeriksa halaman...');
 
     try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = await getActiveTab();
         if (!tab || !tab.id) {
             showError('Tidak dapat mengakses tab aktif.');
             return;
         }
 
-        let detection;
-        try {
-            detection = await sendMessage(tab.id, { action: 'DETECT_PAGE' });
-        } catch (e) {
-            showError('Marketplace ini belum didukung. Buka halaman produk di Shopee, Tokopedia, atau Lazada.');
+        const cacheKey = cacheKeyFor(tab);
+        const cached = await chrome.storage.local.get([cacheKey]);
+
+        if (cached && cached[cacheKey]) {
+            renderAll(cached[cacheKey]);
             return;
         }
 
-        if (!detection) {
-            showError('Tidak ada respons dari halaman.');
-            return;
-        }
-
-        if (!detection.isProduct) {
-            showError(detection.reason || 'Halaman tidak dikenali.');
-            return;
-        }
-
-        showResult(`Halaman produk ${detection.marketplace} terdeteksi`, detection.reason);
-        productEl.classList.add('hidden');
-
-        showStatus('Mengekstrak data produk...');
-
-        let extraction;
-        try {
-            extraction = await sendMessage(tab.id, { action: 'EXTRACT_PRODUCT' });
-        } catch (e) {
-            showResult(`Halaman produk ${detection.marketplace} terdeteksi`, detection.reason);
-            showError('Gagal mengekstrak data produk.');
-            return;
-        }
-
-        showResult(`Halaman produk ${detection.marketplace} terdeteksi`, detection.reason);
-
-        if (!extraction || !extraction.success || !extraction.product) {
-            const reason = (extraction && extraction.error) || 'Data produk tidak ditemukan di halaman ini.';
-            resultDetail.textContent = `${detection.reason} (${reason})`;
-            return;
-        }
-
-        renderProduct(extraction.product);
-
-        try {
-            const response = await sendMessage(tab.id, {
-                action: 'UNDERSTAND_PRODUCT',
-                product: extraction.product
-            });
-            const aiData = response ? response.aiData : null;
-            console.log("AI Result:", aiData);
-            renderAiData(aiData);
-        } catch (aiError) {
-            console.error('[Shopping Intelligence] Analisis AI gagal:', aiError);
-            renderAiData(null);
-        }
+        await analyzeAndCache(tab);
     } catch (error) {
         console.error('[Shopping Intelligence] Error:', error);
         showError('Terjadi kesalahan tak terduga.');
     }
 }
 
+async function onReanalyze() {
+    const tab = await getActiveTab();
+    if (!tab || !tab.id) {
+        showError('Tidak dapat mengakses tab aktif.');
+        return;
+    }
+
+    reanalyzeBtn.disabled = true;
+    const cacheKey = cacheKeyFor(tab);
+    try {
+        await chrome.storage.local.remove(cacheKey);
+    } catch (e) {
+        console.error('[Shopping Intelligence] Gagal menghapus cache:', e);
+    }
+
+    showStatus('Menganalisis ulang...');
+    await analyzeAndCache(tab);
+    reanalyzeBtn.disabled = false;
+}
+
 saveKeyBtn.addEventListener('click', saveApiKey);
+reanalyzeBtn.addEventListener('click', onReanalyze);
 
 loadApiKey();
 init();

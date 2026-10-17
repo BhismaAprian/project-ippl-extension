@@ -9,7 +9,7 @@
 </head>
 
 <body>
-    <div class="container">
+    <div class="app">
         <!-- Header -->
         <header class="header">
             <div class="logo">
@@ -19,91 +19,102 @@
             <span class="version" id="version">v0.1.0</span>
         </header>
 
-        <!-- Status area -->
-        <main class="main">
-            <div class="status" id="status">
-                <div class="spinner" id="spinner"></div>
-                <p class="status-text" id="statusText">Memeriksa halaman...</p>
+        <button id="reanalyzeBtn" style="margin-bottom: 10px; cursor: pointer;">🔄 Analisis Ulang</button>
+
+        <!-- Status -->
+        <div class="status" id="status">
+            <div class="spinner"></div>
+            <p class="status-text" id="statusText">Memeriksa halaman...</p>
+        </div>
+
+        <!-- Error -->
+        <div class="error hidden" id="error">
+            <div class="error-icon">⚠️</div>
+            <p class="error-text" id="errorText">Terjadi kesalahan.</p>
+        </div>
+
+        <!-- Results -->
+        <div class="results hidden" id="result">
+            <div class="result-header">
+                <span class="result-badge">✓</span>
+                <span class="result-title" id="resultTitle">Halaman produk terdeteksi</span>
             </div>
+            <p class="result-detail" id="resultDetail"></p>
 
-            <!-- Result area (akan muncul kalau halaman valid) -->
-            <div class="result hidden" id="result">
-                <div class="result-header">
-                    <span class="result-badge" id="resultBadge">✓</span>
-                    <span class="result-title" id="resultTitle">Halaman produk terdeteksi</span>
+            <!-- a. Original Product -->
+            <section class="card">
+                <h2 class="card-title">
+                    🛒 Original Product
+                    <span class="source-badge" id="sourceBadge">Shopee</span>
+                </h2>
+                <div class="product-top">
+                    <img class="product-image hidden" id="productImage" alt="Produk" />
+                    <div class="product-head">
+                        <h3 class="product-name" id="productTitle">-</h3>
+                        <p class="product-price" id="productPrice">-</p>
+                        <div class="product-badges" id="productBadges"></div>
+                    </div>
                 </div>
-                <div class="result-body">
-                    <p class="result-detail" id="resultDetail"></p>
+
+                <div class="product-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Rating</span>
+                        <span class="meta-value" id="productRating">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Ulasan</span>
+                        <span class="meta-value" id="productReviews">-</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Penjual</span>
+                        <span class="meta-value" id="productSeller">-</span>
+                    </div>
                 </div>
 
-                <!-- Product detail (muncul setelah EXTRACT_PRODUCT) -->
-                <div class="product hidden" id="product">
-                    <div class="product-top">
-                        <img class="product-image hidden" id="productImage" alt="Produk" />
-                        <div class="product-head">
-                            <h2 class="product-title" id="productTitle">-</h2>
-                            <p class="product-price" id="productPrice">-</p>
-                            <div class="product-badges" id="productBadges"></div>
-                        </div>
-                    </div>
+                <div class="product-specs hidden" id="productSpecs">
+                    <h4 class="section-subtitle">Spesifikasi</h4>
+                    <dl class="specs-grid" id="productSpecsGrid"></dl>
+                </div>
 
-                    <div class="product-meta">
-                        <div class="meta-item">
-                            <span class="meta-label">Rating</span>
-                            <span class="meta-value" id="productRating">-</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Ulasan</span>
-                            <span class="meta-value" id="productReviews">-</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Penjual</span>
-                            <span class="meta-value" id="productSeller">-</span>
-                        </div>
-                    </div>
-
-                    <div class="product-specs hidden" id="productSpecs">
-                        <h3 class="specs-title">Spesifikasi</h3>
-                        <dl class="specs-grid" id="productSpecsGrid"></dl>
-                    </div>
-
-                    <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
-                    <h3 style="font-size: 14px; color: #333;">🧠 AI Product Understanding</h3>
-                    <div id="aiDataSection" class="hidden" style="font-size: 12px; color: #555;">
+                <div class="ai-block hidden" id="aiDataSection">
+                    <h4 class="section-subtitle">🧠 AI Product Understanding</h4>
+                    <div class="ai-grid">
                         <div><strong>Brand:</strong> <span id="aiBrand">-</span></div>
                         <div><strong>Category:</strong> <span id="aiCategory">-</span></div>
                         <div><strong>Model:</strong> <span id="aiModel">-</span></div>
-                        <div style="margin-top: 5px;"><strong>Specifications:</strong></div>
-                        <div id="aiSpecs" style="background: #f9f9f9; padding: 5px; border-radius: 4px; margin-top: 2px;"></div>
                     </div>
+                    <div class="ai-specs-label"><strong>Specifications:</strong></div>
+                    <div class="ai-specs" id="aiSpecs"></div>
                 </div>
-
-                <button class="btn-primary" id="analyzeBtn" disabled>
-                    Analisis Produk
-                </button>
-                <p class="hint">Fitur analisis akan tersedia di minggu berikutnya.</p>
-            </div>
-
-            <!-- Error area -->
-            <div class="error hidden" id="error">
-                <div class="error-icon">⚠️</div>
-                <p class="error-text" id="errorText">Terjadi kesalahan.</p>
-            </div>
-
-            <!-- Settings area -->
-            <section class="settings" id="settings">
-                <h3 class="settings-title">Settings</h3>
-                <label class="settings-label" for="groqKeyInput">Groq API Key</label>
-                <div class="settings-row">
-                    <input class="settings-input" id="groqKeyInput" type="password"
-                        placeholder="gsk_..." autocomplete="off" spellcheck="false" />
-                    <button class="btn-save" id="saveKeyBtn" type="button">Save</button>
-                </div>
-                <p class="settings-status hidden" id="settingsStatus"></p>
             </section>
-        </main>
 
-        <!-- Footer -->
+            <!-- b. Smart Alternatives -->
+            <section class="card">
+                <h2 class="card-title">🔎 Smart Alternatives</h2>
+                <div id="searchResults" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            </section>
+
+            <!-- c. AI Recommendation -->
+            <section class="card">
+                <h2 class="card-title">💡 AI Recommendation</h2>
+                <div class="reco-box reco-info" id="recommendationBox">
+                    Menunggu analisis...
+                </div>
+            </section>
+        </div>
+
+        <!-- Settings -->
+        <section class="card settings" id="settings">
+            <h2 class="card-title">⚙️ Settings</h2>
+            <label class="settings-label" for="groqKeyInput">Groq API Key</label>
+            <div class="settings-row">
+                <input class="settings-input" id="groqKeyInput" type="password"
+                    placeholder="gsk_..." autocomplete="off" spellcheck="false" />
+                <button class="btn-save" id="saveKeyBtn" type="button">Save</button>
+            </div>
+            <p class="settings-status hidden" id="settingsStatus"></p>
+        </section>
+
         <footer class="footer">
             <p>Sebelum checkout, cek dulu.</p>
         </footer>
