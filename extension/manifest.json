@@ -11,7 +11,8 @@
     "host_permissions": [
         "https://shopee.co.id/*",
         "https://www.tokopedia.com/*",
-        "https://www.lazada.co.id/*"
+        "https://www.lazada.co.id/*",
+        "https://google.serper.dev/*"
     ],
     "action": {
         "default_popup": "popup/popup.html",
@@ -36,6 +37,7 @@
                 "adapters/tokopedia-adapter.js",
                 "adapters/lazada-adapter.js",
                 "shared/ai-client.js",
+                "shared/search-client.js",
                 "content/marketplace-detector.js"
             ],
             "run_at": "document_idle"
