@@ -35,6 +35,39 @@
                 <div class="result-body">
                     <p class="result-detail" id="resultDetail"></p>
                 </div>
+
+                <!-- Product detail (muncul setelah EXTRACT_PRODUCT) -->
+                <div class="product hidden" id="product">
+                    <div class="product-top">
+                        <img class="product-image hidden" id="productImage" alt="Produk" />
+                        <div class="product-head">
+                            <h2 class="product-title" id="productTitle">-</h2>
+                            <p class="product-price" id="productPrice">-</p>
+                            <div class="product-badges" id="productBadges"></div>
+                        </div>
+                    </div>
+
+                    <div class="product-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Rating</span>
+                            <span class="meta-value" id="productRating">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Ulasan</span>
+                            <span class="meta-value" id="productReviews">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Penjual</span>
+                            <span class="meta-value" id="productSeller">-</span>
+                        </div>
+                    </div>
+
+                    <div class="product-specs hidden" id="productSpecs">
+                        <h3 class="specs-title">Spesifikasi</h3>
+                        <dl class="specs-grid" id="productSpecsGrid"></dl>
+                    </div>
+                </div>
+
                 <button class="btn-primary" id="analyzeBtn" disabled>
                     Analisis Produk
                 </button>
