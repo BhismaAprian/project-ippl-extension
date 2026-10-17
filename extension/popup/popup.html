@@ -66,6 +66,16 @@
                         <h3 class="specs-title">Spesifikasi</h3>
                         <dl class="specs-grid" id="productSpecsGrid"></dl>
                     </div>
+
+                    <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
+                    <h3 style="font-size: 14px; color: #333;">🧠 AI Product Understanding</h3>
+                    <div id="aiDataSection" class="hidden" style="font-size: 12px; color: #555;">
+                        <div><strong>Brand:</strong> <span id="aiBrand">-</span></div>
+                        <div><strong>Category:</strong> <span id="aiCategory">-</span></div>
+                        <div><strong>Model:</strong> <span id="aiModel">-</span></div>
+                        <div style="margin-top: 5px;"><strong>Specifications:</strong></div>
+                        <div id="aiSpecs" style="background: #f9f9f9; padding: 5px; border-radius: 4px; margin-top: 2px;"></div>
+                    </div>
                 </div>
 
                 <button class="btn-primary" id="analyzeBtn" disabled>
@@ -79,6 +89,18 @@
                 <div class="error-icon">⚠️</div>
                 <p class="error-text" id="errorText">Terjadi kesalahan.</p>
             </div>
+
+            <!-- Settings area -->
+            <section class="settings" id="settings">
+                <h3 class="settings-title">Settings</h3>
+                <label class="settings-label" for="groqKeyInput">Groq API Key</label>
+                <div class="settings-row">
+                    <input class="settings-input" id="groqKeyInput" type="password"
+                        placeholder="gsk_..." autocomplete="off" spellcheck="false" />
+                    <button class="btn-save" id="saveKeyBtn" type="button">Save</button>
+                </div>
+                <p class="settings-status hidden" id="settingsStatus"></p>
+            </section>
         </main>
 
         <!-- Footer -->
@@ -87,6 +109,7 @@
         </footer>
     </div>
 
+    <script src="../shared/ai-client.js"></script>
     <script src="popup.js"></script>
 </body>
 

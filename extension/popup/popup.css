@@ -304,6 +304,73 @@ body {
     font-size: 13px;
 }
 
+/* Settings */
+.settings {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e5e5;
+}
+
+.settings-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 10px;
+}
+
+.settings-label {
+    display: block;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 6px;
+}
+
+.settings-row {
+    display: flex;
+    gap: 8px;
+}
+
+.settings-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+}
+
+.settings-input:focus {
+    border-color: #ee4d2d;
+}
+
+.btn-save {
+    padding: 8px 14px;
+    background: #ee4d2d;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.btn-save:hover {
+    background: #d73211;
+}
+
+.settings-status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #155724;
+}
+
+.settings-status.error {
+    color: #b02a37;
+}
+
 /* Footer */
 .footer {
     padding: 10px 16px;

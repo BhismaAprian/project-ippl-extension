@@ -30,6 +30,18 @@ const productSellerEl = document.getElementById('productSeller');
 const productSpecsEl = document.getElementById('productSpecs');
 const productSpecsGrid = document.getElementById('productSpecsGrid');
 
+const aiDataSection = document.getElementById('aiDataSection');
+const aiBrandEl = document.getElementById('aiBrand');
+const aiCategoryEl = document.getElementById('aiCategory');
+const aiModelEl = document.getElementById('aiModel');
+const aiSpecsEl = document.getElementById('aiSpecs');
+
+const groqKeyInput = document.getElementById('groqKeyInput');
+const saveKeyBtn = document.getElementById('saveKeyBtn');
+const settingsStatus = document.getElementById('settingsStatus');
+
+const aiClient = new window.AIClient();
+
 // Set versi dari manifest
 versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
 
@@ -66,6 +78,34 @@ function sendMessage(tabId, message) {
             resolve(response);
         });
     });
+}
+
+// === Settings: Groq API Key ===
+
+function showSettingsStatus(text, ok = true) {
+    settingsStatus.textContent = text;
+    settingsStatus.classList.remove('hidden');
+    settingsStatus.classList.toggle('error', !ok);
+}
+
+async function loadApiKey() {
+    try {
+        const key = await aiClient.getApiKey();
+        if (key) groqKeyInput.value = key;
+    } catch (e) {
+        console.error('[Shopping Intelligence] Gagal memuat API key:', e);
+    }
+}
+
+async function saveApiKey() {
+    const key = groqKeyInput.value.trim();
+    try {
+        await aiClient.setApiKey(key);
+        showSettingsStatus(key ? 'API Key tersimpan.' : 'API Key dikosongkan.', true);
+    } catch (e) {
+        console.error('[Shopping Intelligence] Gagal menyimpan API key:', e);
+        showSettingsStatus('Gagal menyimpan API Key.', false);
+    }
 }
 
 // === Format & Render Produk ===
@@ -128,6 +168,40 @@ function renderSpecs(specifications) {
     });
 }
 
+function renderAiData(aiData) {
+    aiDataSection.classList.remove('hidden');
+
+    if (!aiData || typeof aiData !== 'object') {
+        aiSpecsEl.textContent = 'AI analysis failed';
+        aiBrandEl.textContent = '-';
+        aiCategoryEl.textContent = '-';
+        aiModelEl.textContent = '-';
+        return;
+    }
+
+    setText(aiBrandEl, aiData.brand);
+    setText(aiCategoryEl, aiData.category);
+    setText(aiModelEl, aiData.model);
+
+    aiSpecsEl.innerHTML = '';
+    const specs = aiData.specifications;
+
+    if (specs && typeof specs === 'object' && Object.keys(specs).length > 0) {
+        const list = document.createElement('ul');
+        list.style.margin = '0';
+        list.style.paddingLeft = '16px';
+        Object.entries(specs).forEach(([key, value]) => {
+            const li = document.createElement('li');
+            const val = (value === null || value === undefined || value === '') ? '-' : value;
+            li.textContent = `${key}: ${val}`;
+            list.appendChild(li);
+        });
+        aiSpecsEl.appendChild(list);
+    } else {
+        aiSpecsEl.textContent = 'AI analysis failed';
+    }
+}
+
 function renderProduct(product) {
     productEl.classList.remove('hidden');
 
@@ -157,6 +231,9 @@ function renderProduct(product) {
     setText(productSellerEl, sellerName);
 
     renderSpecs(product.specifications);
+
+    aiDataSection.classList.add('hidden');
+    aiSpecsEl.innerHTML = '';
 }
 
 // === Fungsi Utama ===
@@ -212,10 +289,26 @@ async function init() {
         }
 
         renderProduct(extraction.product);
+
+        try {
+            const response = await sendMessage(tab.id, {
+                action: 'UNDERSTAND_PRODUCT',
+                product: extraction.product
+            });
+            const aiData = response ? response.aiData : null;
+            console.log("AI Result:", aiData);
+            renderAiData(aiData);
+        } catch (aiError) {
+            console.error('[Shopping Intelligence] Analisis AI gagal:', aiError);
+            renderAiData(null);
+        }
     } catch (error) {
         console.error('[Shopping Intelligence] Error:', error);
         showError('Terjadi kesalahan tak terduga.');
     }
 }
 
+saveKeyBtn.addEventListener('click', saveApiKey);
+
+loadApiKey();
 init();
