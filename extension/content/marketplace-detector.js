@@ -40,6 +40,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'DETECT_PAGE') {
         const result = detectCurrentPage();
         sendResponse(result);
+        return true;
     }
+
+    if (request.action === 'EXTRACT_PRODUCT') {
+        const currentUrl = window.location.href;
+        const adapter = ADAPTERS.find(a => a.matchesUrl(currentUrl));
+
+        if (!adapter) {
+            sendResponse({ success: false, product: null, error: 'Adapter tidak ditemukan' });
+            return true;
+        }
+
+        if (typeof adapter.extractProduct !== 'function') {
+            sendResponse({
+                success: false,
+                product: null,
+                error: `Ekstraksi produk belum didukung untuk ${adapter.marketplaceName}`
+            });
+            return true;
+        }
+
+        try {
+            const product = adapter.extractProduct();
+            sendResponse({ success: true, product, error: null });
+        } catch (e) {
+            sendResponse({ success: false, product: null, error: e.message });
+        }
+        return true;
+    }
+
     return true;
 });
