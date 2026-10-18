@@ -94,5 +94,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'EVALUATE_DEALS') {
+        const ai = new window.AIClient();
+        ai.evaluateDeals(request.product, request.candidates)
+            .then((evaluation) => {
+                sendResponse({ success: true, evaluation: evaluation });
+            })
+            .catch((e) => {
+                sendResponse({ success: false, evaluation: null, error: e.message });
+            });
+        return true;
+    }
+
     return true;
 });
