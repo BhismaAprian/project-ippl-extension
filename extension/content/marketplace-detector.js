@@ -82,18 +82,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.action === 'SEARCH_ALTERNATIVES') {
-        const search = new window.SearchClient();
-        search.searchAlternatives(request.aiData, request.product)
-            .then((alternatives) => {
-                sendResponse({ success: true, alternatives: alternatives });
-            })
-            .catch((e) => {
-                sendResponse({ success: false, alternatives: [], error: e.message });
-            });
-        return true;
-    }
-
     if (request.action === 'EVALUATE_DEALS') {
         const ai = new window.AIClient();
         ai.evaluateDeals(request.product, request.candidates)
