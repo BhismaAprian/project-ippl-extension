@@ -119,7 +119,7 @@ function buildResultCard(candidate, reason, kind, originalPrice) {
     head.className = 'rc-head';
 
     const market = document.createElement('span');
-    market.className = 'market-badge ' + marketClass(candidate.marketplace);
+    market.className = 'badge-marketplace ' + marketClass(candidate.marketplace);
     market.textContent = candidate.marketplace || 'Other';
     head.appendChild(market);
 
@@ -165,17 +165,17 @@ function buildResultCard(candidate, reason, kind, originalPrice) {
 
     const price = document.createElement('div');
     if (candidate.price !== null && candidate.price !== undefined) {
-        price.className = 'rc-price';
+        price.className = 'price';
         price.textContent = formatPrice(candidate.price, 'IDR');
     } else {
-        price.className = 'rc-price missing';
+        price.className = 'price missing';
         price.textContent = 'Harga tidak terdeteksi';
     }
     card.appendChild(price);
 
     if (reason) {
         const reasonEl = document.createElement('div');
-        reasonEl.className = 'rc-reason';
+        reasonEl.className = 'reason-text';
         reasonEl.textContent = reason;
         card.appendChild(reasonEl);
     }
@@ -219,7 +219,7 @@ function renderOriginalProduct(product, marketplace) {
     info.appendChild(name);
 
     const price = document.createElement('div');
-    price.className = 'op-price';
+    price.className = 'op-price price';
     price.textContent = formatPrice(product.price, product.currency);
     info.appendChild(price);
 
@@ -242,6 +242,9 @@ function renderOriginalProduct(product, marketplace) {
 
 function renderHighlight(sectionEl, titleText, candidate, reason, kind, originalPrice) {
     sectionEl.innerHTML = '';
+    sectionEl.classList.add('card');
+    if (kind === 'best') sectionEl.classList.add('card-best');
+    if (kind === 'cheapest') sectionEl.classList.add('card-cheap');
 
     const title = document.createElement('h2');
     title.className = 'section-title';
@@ -301,6 +304,7 @@ function renderAll(data) {
         const otherReasons = Array.isArray(evaluation.others) ? evaluation.others : [];
 
         els.otherResultsSection.innerHTML = '';
+        els.otherResultsSection.classList.add('card');
         if (others.length > 0) {
             const title = document.createElement('h2');
             title.className = 'section-title';
@@ -339,6 +343,7 @@ function renderAll(data) {
         hide(els.cheapestSection);
 
         els.otherResultsSection.innerHTML = '';
+        els.otherResultsSection.classList.add('card');
         const others = candidates.slice(3);
         if (others.length > 0) {
             const otitle = document.createElement('h2');
@@ -391,12 +396,12 @@ async function analyze(tab) {
     console.log('[Shopping Intelligence] SEARCH_ALTERNATIVES');
     let searchResults = [];
     try {
-        const r = await sendMessage(tab.id, { action: 'SEARCH_ALTERNATIVES', aiData, product });
-        searchResults = (r && Array.isArray(r.alternatives)) ? r.alternatives : [];
+        const searchClient = new window.SearchClient();
+        searchResults = await searchClient.searchAlternatives(product, aiData);
     } catch (e) {
         console.error('[Shopping Intelligence] SEARCH_ALTERNATIVES error:', e);
     }
-    console.log('[Shopping Intelligence] searchResults:', searchResults.length);
+    console.log("[Shopping Intelligence] searchResults:", searchResults.length);
     if (searchResults.length === 0) {
         throw new Error('Tidak ada produk alternatif yang ditemukan di Google');
     }

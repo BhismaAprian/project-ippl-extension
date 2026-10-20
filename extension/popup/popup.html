@@ -5,27 +5,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shopping Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-    <header class="header">
-        <span class="logo">🧠 Shopping Intelligence</span>
-        <span class="version" id="version"></span>
-    </header>
+    <div class="bg-decorations">
+        <span class="shape-circle"></span>
+        <span class="shape-triangle"></span>
+    </div>
 
-    <button id="reanalyzeBtn" type="button">🔄 Analisis Ulang</button>
+    <div class="main-container">
+        <header class="header">
+            <span class="logo">Shopping Intelligence</span>
+            <span class="version" id="version"></span>
+        </header>
 
-    <div id="loadingState" class="loading-state">Menganalisis...</div>
-    <div id="errorState" class="error-state hidden"></div>
+        <button id="reanalyzeBtn" type="button" class="btn">Analisis Ulang</button>
 
-    <section id="originalProduct" class="card hidden"></section>
+        <div id="loadingState" class="loading-state">Menganalisis...</div>
+        <div id="errorState" class="error-state hidden"></div>
 
-    <section id="bestValueSection" class="highlight-card best-value hidden"></section>
-    <section id="cheapestSection" class="highlight-card cheapest hidden"></section>
-    <section id="otherResultsSection" class="other-results hidden"></section>
+        <section id="originalProduct" class="card hidden"></section>
+
+        <section id="bestValueSection" class="card card-best hidden"></section>
+        <section id="cheapestSection" class="card card-cheap hidden"></section>
+        <section id="otherResultsSection" class="card other-results hidden"></section>
+    </div>
 
     <script src="../shared/ai-client.js"></script>
+    <script src="../shared/search-client.js"></script>
     <script src="popup.js"></script>
 </body>
 

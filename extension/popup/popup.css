@@ -1,91 +1,254 @@
-/* ============================
-   Base
-   ============================ */
+/* ============================================================
+   Design System: Playful Geometric
+   Memphis Group 80s · Modern · Tactile · Pop · Energetic
+   Fonts: Outfit (display) + Plus Jakarta Sans (body)
+   ============================================================ */
+
+/* 1. Design Tokens (Root) */
+:root {
+    --bg-cream: #FFFDF5;
+    --fg-slate: #1E293B;
+    --muted: #F1F5F9;
+    --muted-fg: #64748B;
+    --accent-violet: #8B5CF6;
+    --accent-pink: #F472B6;
+    --accent-yellow: #FBBF24;
+    --accent-mint: #34D399;
+    --border-color: #E2E8F0;
+    --card-bg: #FFFFFF;
+}
+
 * {
-    margin: 0;
-    padding: 0;
     box-sizing: border-box;
 }
 
+/* 2. Global & Typography */
 body {
-    width: 600px;
+    width: 650px;
     min-height: 500px;
-    padding: 15px;
-    font-family: system-ui, sans-serif;
-    font-size: 14px;
-    color: #1a1a1a;
-    background: #f5f5f5;
+    background-color: var(--bg-cream);
+    color: var(--fg-slate);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    position: relative;
 }
 
-/* ============================
-   Header
-   ============================ */
+h1,
+h2,
+h3,
+.font-heading {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    color: var(--fg-slate);
+    margin: 0;
+}
+
+/* 3. Decorative Background (Geometric Shapes) */
+.bg-decorations {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.shape-circle {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid var(--fg-slate);
+    background: var(--accent-yellow);
+    width: 100px;
+    height: 100px;
+    top: -30px;
+    right: -20px;
+    z-index: -1;
+}
+
+.shape-triangle {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-left: 40px solid transparent;
+    border-right: 40px solid transparent;
+    border-bottom: 60px solid var(--accent-pink);
+    bottom: 20px;
+    left: -20px;
+    transform: rotate(15deg);
+    z-index: -1;
+}
+
+/* 4. Main Container */
+.main-container {
+    padding: 24px;
+    position: relative;
+    z-index: 1;
+}
+
+/* 5. Card Style (The "Sticker" Card) */
+.card {
+    background: var(--card-bg);
+    border: 2px solid var(--fg-slate);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 6px 6px 0px var(--border-color);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+}
+
+.card:hover {
+    transform: translateY(-4px) rotate(-1deg);
+    box-shadow: 8px 8px 0px var(--fg-slate);
+}
+
+/* Warna Shadow Khusus untuk Card Tertentu */
+.card-best {
+    box-shadow: 6px 6px 0px var(--accent-mint);
+    border-color: var(--fg-slate);
+}
+
+.card-best:hover {
+    box-shadow: 8px 8px 0px var(--accent-mint);
+}
+
+.card-cheap {
+    box-shadow: 6px 6px 0px var(--accent-pink);
+    border-color: var(--fg-slate);
+}
+
+.card-cheap:hover {
+    box-shadow: 8px 8px 0px var(--accent-pink);
+}
+
+/* 6. Buttons (The "Candy Button") */
+.btn {
+    background-color: var(--accent-violet);
+    color: white;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    border: 2px solid var(--fg-slate);
+    border-radius: 999px;
+    padding: 10px 20px;
+    cursor: pointer;
+    box-shadow: 4px 4px 0px var(--fg-slate);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0px var(--fg-slate);
+}
+
+.btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px var(--fg-slate);
+}
+
+/* 7. Typography & Badges */
+.price {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 24px;
+    color: var(--accent-violet);
+}
+
+.reason-text {
+    background-color: var(--muted);
+    border-left: 4px solid var(--accent-yellow);
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-top: 10px;
+}
+
+.badge-marketplace {
+    display: inline-block;
+    background: var(--fg-slate);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border: 2px solid white;
+}
+
+/* ============================================================
+   8. Header
+   ============================================================ */
 .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, #ee4d2d 0%, #d73211 100%);
-    color: #fff;
-    border-radius: 8px;
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-bottom: 18px;
 }
 
 .logo {
-    font-weight: 600;
-    font-size: 15px;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    color: var(--fg-slate);
+    line-height: 1.1;
 }
 
 .version {
-    font-size: 12px;
-    opacity: 0.85;
-}
-
-/* ============================
-   Reanalyze button
-   ============================ */
-#reanalyzeBtn {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    background: #1a73e8;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    transition: background 0.2s;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--fg-slate);
+    background: var(--accent-yellow);
+    border: 2px solid var(--fg-slate);
+    border-radius: 999px;
+    padding: 3px 10px;
 }
 
-#reanalyzeBtn:hover {
-    background: #1663c7;
+#reanalyzeBtn {
+    margin-bottom: 20px;
 }
 
 #reanalyzeBtn:disabled {
-    background: #b7c7dd;
+    background: var(--muted-fg);
+    color: white;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: 4px 4px 0px var(--border-color);
 }
 
-/* ============================
-   States
-   ============================ */
+/* ============================================================
+   9. States (loading & error)
+   ============================================================ */
 .loading-state {
-    padding: 50px 0;
+    padding: 44px 0;
     text-align: center;
-    color: #666;
-    font-size: 15px;
+    color: var(--muted-fg);
+    font-weight: 600;
+    font-size: 14px;
 }
 
 .loading-state::before {
     content: '';
     display: block;
-    width: 34px;
-    height: 34px;
-    margin: 0 auto 14px;
-    border: 3px solid #eee;
-    border-top: 3px solid #ee4d2d;
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 16px;
+    border: 4px solid var(--muted);
+    border-top: 4px solid var(--accent-violet);
+    border-right: 4px solid var(--accent-pink);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -98,200 +261,164 @@ body {
 
 .error-state {
     padding: 14px 16px;
-    background: #fde8ea;
-    color: #b02a37;
-    border: 1px solid #f5c2c7;
-    border-radius: 8px;
-    font-size: 14px;
+    background: #FEE2E2;
+    color: #B91C1C;
+    border: 2px solid var(--fg-slate);
+    border-radius: 16px;
+    box-shadow: 6px 6px 0px var(--accent-pink);
+    font-size: 13px;
     font-weight: 600;
     line-height: 1.5;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
 }
 
-/* ============================
-   Cards
-   ============================ */
-.card {
-    background: #fff;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 10px;
-}
-
-.highlight-card {
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 10px;
-    border: 1px solid #e0e0e0;
-}
-
-.highlight-card.best-value {
-    border: 2px solid #28a745;
-    background: #f0fff4;
-}
-
-.highlight-card.cheapest {
-    border: 2px solid #1a73e8;
-    background: #f0f8ff;
-}
-
-.other-results {
-    margin-bottom: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
+/* ============================================================
+   10. Section titles
+   ============================================================ */
 .section-title {
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 8px;
-    color: #333;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--fg-slate);
+    margin-bottom: 12px;
 }
 
-.notice {
-    font-size: 12px;
-    color: #8a6d00;
-    background: #fff8e1;
-    border: 1px solid #ffe69c;
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin-bottom: 8px;
-}
-
-/* ============================
-   Original product
-   ============================ */
+/* ============================================================
+   11. Original product
+   ============================================================ */
 .op-head {
     display: flex;
-    gap: 12px;
+    gap: 16px;
     align-items: flex-start;
 }
 
 .op-image {
-    width: 80px;
-    height: 80px;
+    width: 88px;
+    height: 88px;
     object-fit: cover;
-    border-radius: 6px;
-    border: 1px solid #eee;
-    background: #fafafa;
+    border-radius: 12px;
+    border: 2px solid var(--fg-slate);
+    background: var(--muted);
     flex-shrink: 0;
 }
 
 .op-title {
     font-size: 14px;
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.45;
 }
 
 .op-price {
-    margin-top: 6px;
-    font-size: 18px;
-    font-weight: 700;
-    color: #ee4d2d;
+    margin-top: 8px;
 }
 
 .op-meta {
     margin-top: 6px;
     font-size: 12px;
-    color: #777;
+    color: var(--muted-fg);
+    font-weight: 500;
 }
 
-/* ============================
-   Result cards
-   ============================ */
+/* ============================================================
+   12. Result cards
+   ============================================================ */
 .result-card {
-    background: #fff;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
-    padding: 10px;
+    position: relative;
 }
 
-.result-card.best {
-    border-color: #b7e4c2;
-    background: #f0fff4;
+/* Best & Cheapest sections are the sticker themselves -> flatten inner card */
+.card-best .result-card,
+.card-cheap .result-card {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    transform: none;
 }
 
-.result-card.cheapest {
-    border-color: #bcd4fb;
-    background: #f0f8ff;
+/* Other results: muted mini panels grouped inside the card */
+.other-results .result-card {
+    background: var(--muted);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
 }
 
-.result-card.other {
-    border-color: #e0e0e0;
-    background: #f9f9f9;
+.other-results .result-card:last-child {
+    margin-bottom: 0;
 }
 
+/* ============================================================
+   13. Badges
+   ============================================================ */
 .rc-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
 
-.market-badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 10px;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
+/* Marketplace colour accents (kept playful) */
+.badge-marketplace.market-shopee {
+    background: #EE4D2D;
 }
 
-.market-shopee {
-    background: #ee4d2d;
+.badge-marketplace.market-tokopedia {
+    background: #03AC0E;
 }
 
-.market-tokopedia {
-    background: #03ac0e;
+.badge-marketplace.market-lazada {
+    background: #0F146D;
 }
 
-.market-lazada {
-    background: #0f146d;
+.badge-marketplace.market-blibli {
+    background: #D81E05;
 }
 
-.market-blibli {
-    background: #d81e05;
-}
-
-.market-other {
-    background: #6c757d;
+.badge-marketplace.market-other {
+    background: var(--muted-fg);
 }
 
 .status-badge {
     display: inline-block;
-    padding: 2px 10px;
-    border-radius: 10px;
+    padding: 4px 10px;
+    border-radius: 999px;
     font-size: 11px;
     font-weight: 700;
+    border: 2px solid var(--fg-slate);
 }
 
 .status-badge.green {
-    background: #e6f7ea;
-    color: #1e7e34;
+    background: #D1FAE5;
+    color: #047857;
 }
 
 .status-badge.yellow {
-    background: #fff4d6;
-    color: #8a6d00;
+    background: #FEF3C7;
+    color: #B45309;
 }
 
 .status-badge.red {
-    background: #fde8ea;
-    color: #b02a37;
+    background: #FEE2E2;
+    color: #B91C1C;
 }
 
 .status-badge.gray {
-    background: #eef1f4;
-    color: #495057;
+    background: var(--muted);
+    color: #475569;
 }
 
+/* ============================================================
+   14. Result text
+   ============================================================ */
 .rc-title {
-    font-weight: 600;
-    color: #222;
-    line-height: 1.4;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--fg-slate);
+    line-height: 1.45;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -299,45 +426,46 @@ body {
 }
 
 .rc-snippet {
-    color: #888;
+    color: var(--muted-fg);
     font-size: 12px;
-    margin-top: 4px;
+    margin-top: 6px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.rc-price {
-    margin-top: 6px;
-    font-size: 15px;
-    font-weight: 700;
-    color: #1a1a1a;
-}
-
-.rc-price.missing {
-    font-size: 12px;
-    font-weight: 500;
-    color: #999;
+/* ============================================================
+   15. Price Text
+   ============================================================ */
+.price.missing {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted-fg);
     font-style: italic;
 }
 
-.rc-reason {
-    margin-top: 8px;
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    background: rgba(0, 0, 0, 0.03);
-    color: #444;
-    line-height: 1.5;
+/* ============================================================
+   16. Reason Text
+   ============================================================ */
+.reason-text {
+    font-size: 13px;
+    color: var(--fg-slate);
+    line-height: 1.55;
+    font-style: italic;
 }
 
+/* ============================================================
+   17. Links & notices
+   ============================================================ */
 .rc-link {
     display: inline-block;
-    margin-top: 8px;
-    color: #1a73e8;
+    margin-top: 12px;
+    color: var(--accent-violet);
+    font-family: 'Outfit', sans-serif;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     text-decoration: none;
 }
 
@@ -345,11 +473,22 @@ body {
     text-decoration: underline;
 }
 
-/* ============================
-   Utility
-   ============================ */
+.notice {
+    font-size: 12px;
+    font-weight: 600;
+    color: #B45309;
+    background: #FEF3C7;
+    border: 2px solid var(--fg-slate);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+/* ============================================================
+   18. Utility
+   ============================================================ */
 .muted {
-    color: #999;
+    color: var(--muted-fg);
 }
 
 .hidden {
