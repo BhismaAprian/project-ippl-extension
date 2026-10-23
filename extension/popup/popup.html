@@ -33,6 +33,16 @@
         <section id="bestValueSection" class="card card-best hidden"></section>
         <section id="cheapestSection" class="card card-cheap hidden"></section>
         <section id="otherResultsSection" class="card other-results hidden"></section>
+
+        <section id="settingsSection" class="card settings">
+            <h2 class="section-title">⚙️ Settings</h2>
+            <label for="inputGroqKey">Groq API Key</label>
+            <input id="inputGroqKey" type="password" placeholder="Masukkan Groq API Key">
+            <label for="inputExaKey">Exa API Key</label>
+            <input id="inputExaKey" type="password" placeholder="Masukkan Exa API Key">
+            <button id="saveKeysBtn" type="button" class="btn">Simpan</button>
+            <small id="keyStatus"></small>
+        </section>
     </div>
 
     <script src="../shared/ai-client.js"></script>

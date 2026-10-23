@@ -17,7 +17,11 @@ const els = {
     originalProduct: document.getElementById('originalProduct'),
     bestValueSection: document.getElementById('bestValueSection'),
     cheapestSection: document.getElementById('cheapestSection'),
-    otherResultsSection: document.getElementById('otherResultsSection')
+    otherResultsSection: document.getElementById('otherResultsSection'),
+    inputGroqKey: document.getElementById('inputGroqKey'),
+    inputExaKey: document.getElementById('inputExaKey'),
+    saveKeysBtn: document.getElementById('saveKeysBtn'),
+    keyStatus: document.getElementById('keyStatus')
 };
 
 try {
@@ -74,6 +78,30 @@ function getActiveTab() {
 
 function cacheKeyFor(tab) {
     return 'cache_' + (tab.url || ('tabId_' + tab.id));
+}
+
+// === API Keys ===
+async function loadKeys() {
+    try {
+        const { groqKey, exaKey } = await chrome.storage.local.get(['groqKey', 'exaKey']);
+        if (els.inputGroqKey) els.inputGroqKey.value = groqKey || '';
+        if (els.inputExaKey) els.inputExaKey.value = exaKey || '';
+    } catch (e) {
+        console.error('[Shopping Intelligence] gagal baca API keys:', e);
+    }
+}
+
+async function saveKeys() {
+    try {
+        await chrome.storage.local.set({
+            groqKey: els.inputGroqKey ? els.inputGroqKey.value.trim() : '',
+            exaKey: els.inputExaKey ? els.inputExaKey.value.trim() : ''
+        });
+        if (els.keyStatus) els.keyStatus.textContent = '✅ Keys Saved!';
+    } catch (e) {
+        console.error('[Shopping Intelligence] gagal simpan API keys:', e);
+        if (els.keyStatus) els.keyStatus.textContent = '❌ Gagal menyimpan keys.';
+    }
 }
 
 // === Format helpers ===
@@ -387,9 +415,13 @@ async function analyze(tab) {
     let aiData = null;
     try {
         const r = await sendMessage(tab.id, { action: 'UNDERSTAND_PRODUCT', product });
+        if (r && r.success === false && /API Key/i.test(r.error || '')) {
+            throw new Error(r.error);
+        }
         aiData = r ? r.aiData : null;
     } catch (e) {
         console.error('[Shopping Intelligence] UNDERSTAND_PRODUCT error:', e);
+        if (/API Key/i.test(e && e.message)) throw e;
     }
     console.log('[Shopping Intelligence] aiData:', aiData);
 
@@ -400,6 +432,7 @@ async function analyze(tab) {
         searchResults = await searchClient.searchAlternatives(product, aiData);
     } catch (e) {
         console.error('[Shopping Intelligence] SEARCH_ALTERNATIVES error:', e);
+        if (/API Key/i.test(e && e.message)) throw e;
     }
     console.log("[Shopping Intelligence] searchResults:", searchResults.length);
     if (searchResults.length === 0) {
@@ -414,9 +447,13 @@ async function analyze(tab) {
             product,
             candidates: searchResults
         });
+        if (r && r.success === false && /API Key/i.test(r.error || '')) {
+            throw new Error(r.error);
+        }
         evaluation = r ? r.evaluation : null;
     } catch (e) {
         console.error('[Shopping Intelligence] EVALUATE_DEALS error:', e);
+        if (/API Key/i.test(e && e.message)) throw e;
     }
     console.log('[Shopping Intelligence] evaluation:', evaluation);
 
@@ -498,5 +535,7 @@ async function onReanalyze() {
 }
 
 els.reanalyzeBtn.addEventListener('click', onReanalyze);
+if (els.saveKeysBtn) els.saveKeysBtn.addEventListener('click', saveKeys);
 
+loadKeys();
 init();
