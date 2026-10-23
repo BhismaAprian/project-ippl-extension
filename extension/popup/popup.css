@@ -1,131 +1,254 @@
-/* ============================
-   Base
-   ============================ */
+/* ============================================================
+   Design System: Playful Geometric
+   Memphis Group 80s · Modern · Tactile · Pop · Energetic
+   Fonts: Outfit (display) + Plus Jakarta Sans (body)
+   ============================================================ */
+
+/* 1. Design Tokens (Root) */
+:root {
+    --bg-cream: #FFFDF5;
+    --fg-slate: #1E293B;
+    --muted: #F1F5F9;
+    --muted-fg: #64748B;
+    --accent-violet: #8B5CF6;
+    --accent-pink: #F472B6;
+    --accent-yellow: #FBBF24;
+    --accent-mint: #34D399;
+    --border-color: #E2E8F0;
+    --card-bg: #FFFFFF;
+}
+
 * {
-    margin: 0;
-    padding: 0;
     box-sizing: border-box;
 }
 
+/* 2. Global & Typography */
 body {
     width: 650px;
-    font-family: system-ui;
-    background: #f5f5f5;
+    min-height: 500px;
+    background-color: var(--bg-cream);
+    color: var(--fg-slate);
+    font-family: 'Plus Jakarta Sans', sans-serif;
     margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    position: relative;
+}
+
+h1,
+h2,
+h3,
+.font-heading {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    color: var(--fg-slate);
+    margin: 0;
+}
+
+/* 3. Decorative Background (Geometric Shapes) */
+.bg-decorations {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.shape-circle {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid var(--fg-slate);
+    background: var(--accent-yellow);
+    width: 100px;
+    height: 100px;
+    top: -30px;
+    right: -20px;
+    z-index: -1;
+}
+
+.shape-triangle {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-left: 40px solid transparent;
+    border-right: 40px solid transparent;
+    border-bottom: 60px solid var(--accent-pink);
+    bottom: 20px;
+    left: -20px;
+    transform: rotate(15deg);
+    z-index: -1;
+}
+
+/* 4. Main Container */
+.main-container {
+    padding: 24px;
+    position: relative;
+    z-index: 1;
+}
+
+/* 5. Card Style (The "Sticker" Card) */
+.card {
+    background: var(--card-bg);
+    border: 2px solid var(--fg-slate);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 6px 6px 0px var(--border-color);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+}
+
+.card:hover {
+    transform: translateY(-4px) rotate(-1deg);
+    box-shadow: 8px 8px 0px var(--fg-slate);
+}
+
+/* Warna Shadow Khusus untuk Card Tertentu */
+.card-best {
+    box-shadow: 6px 6px 0px var(--accent-mint);
+    border-color: var(--fg-slate);
+}
+
+.card-best:hover {
+    box-shadow: 8px 8px 0px var(--accent-mint);
+}
+
+.card-cheap {
+    box-shadow: 6px 6px 0px var(--accent-pink);
+    border-color: var(--fg-slate);
+}
+
+.card-cheap:hover {
+    box-shadow: 8px 8px 0px var(--accent-pink);
+}
+
+/* 6. Buttons (The "Candy Button") */
+.btn {
+    background-color: var(--accent-violet);
+    color: white;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    border: 2px solid var(--fg-slate);
+    border-radius: 999px;
+    padding: 10px 20px;
+    cursor: pointer;
+    box-shadow: 4px 4px 0px var(--fg-slate);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0px var(--fg-slate);
+}
+
+.btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px var(--fg-slate);
+}
+
+/* 7. Typography & Badges */
+.price {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 24px;
+    color: var(--accent-violet);
+}
+
+.reason-text {
+    background-color: var(--muted);
+    border-left: 4px solid var(--accent-yellow);
     padding: 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-top: 10px;
 }
 
-.app {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+.badge-marketplace {
+    display: inline-block;
+    background: var(--fg-slate);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border: 2px solid white;
 }
 
-/* ============================
-   Header
-   ============================ */
+/* ============================================================
+   8. Header
+   ============================================================ */
 .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, #ee4d2d 0%, #d73211 100%);
-    color: white;
-    border-radius: 8px;
+    gap: 12px;
+    margin-bottom: 18px;
 }
 
 .logo {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.logo-icon {
-    font-size: 20px;
-}
-
-.logo-text {
-    font-weight: 600;
-    font-size: 16px;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    color: var(--fg-slate);
+    line-height: 1.1;
 }
 
 .version {
-    font-size: 12px;
-    opacity: 0.85;
-}
-
-/* ============================
-   Reanalyze button
-   ============================ */
-#reanalyzeBtn {
-    padding: 10px 14px;
-    background: #1a73e8;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
-    font-family: inherit;
-    transition: background 0.2s;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--fg-slate);
+    background: var(--accent-yellow);
+    border: 2px solid var(--fg-slate);
+    border-radius: 999px;
+    padding: 3px 10px;
 }
 
-#reanalyzeBtn:hover {
-    background: #1663c7;
+#reanalyzeBtn {
+    margin-bottom: 20px;
 }
 
 #reanalyzeBtn:disabled {
-    background: #b7c7dd;
-    cursor: not-allowed;
-}
-
-/* ============================
-   Card
-   ============================ */
-.card {
-    background: #ffffff;
-    border-radius: 8px;
-    padding: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    border: 1px solid #ececec;
-}
-
-.card-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 15px;
-    font-weight: 700;
-    color: #222;
-    margin-bottom: 10px;
-}
-
-.source-badge {
-    margin-left: auto;
-    padding: 2px 10px;
-    border-radius: 12px;
-    background: #ee4d2d;
+    background: var(--muted-fg);
     color: white;
-    font-size: 11px;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 4px 4px 0px var(--border-color);
+}
+
+/* ============================================================
+   9. States (loading & error)
+   ============================================================ */
+.loading-state {
+    padding: 44px 0;
+    text-align: center;
+    color: var(--muted-fg);
     font-weight: 600;
-    text-transform: capitalize;
+    font-size: 14px;
 }
 
-/* ============================
-   Status / Error
-   ============================ */
-.status {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 60px 0;
-}
-
-.spinner {
+.loading-state::before {
+    content: '';
+    display: block;
     width: 36px;
     height: 36px;
-    border: 3px solid #eee;
-    border-top: 3px solid #ee4d2d;
+    margin: 0 auto 16px;
+    border: 4px solid var(--muted);
+    border-top: 4px solid var(--accent-violet);
+    border-right: 4px solid var(--accent-pink);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -136,465 +259,236 @@ body {
     }
 }
 
-.status-text {
-    color: #666;
+.error-state {
+    padding: 14px 16px;
+    background: #FEE2E2;
+    color: #B91C1C;
+    border: 2px solid var(--fg-slate);
+    border-radius: 16px;
+    box-shadow: 6px 6px 0px var(--accent-pink);
     font-size: 13px;
-}
-
-.error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 50px 20px;
-    text-align: center;
-}
-
-.error-icon {
-    font-size: 36px;
-}
-
-.error-text {
-    color: #856404;
-    background: #fff3cd;
-    padding: 12px 16px;
-    border-radius: 6px;
-    font-size: 13px;
-}
-
-/* ============================
-   Result header
-   ============================ */
-.result-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-.result-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: #d4edda;
-    color: #155724;
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.result-title {
     font-weight: 600;
-    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 20px;
 }
 
-.result-detail {
-    color: #888;
-    font-size: 12px;
+/* ============================================================
+   10. Section titles
+   ============================================================ */
+.section-title {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--fg-slate);
     margin-bottom: 12px;
-    word-break: break-word;
 }
 
-.results {
+/* ============================================================
+   11. Original product
+   ============================================================ */
+.op-head {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-/* ============================
-   Original product
-   ============================ */
-.product-top {
-    display: flex;
-    gap: 14px;
+    gap: 16px;
     align-items: flex-start;
 }
 
-.product-image {
-    width: 96px;
-    height: 96px;
+.op-image {
+    width: 88px;
+    height: 88px;
     object-fit: cover;
-    border-radius: 8px;
-    border: 1px solid #eee;
-    background: #fafafa;
+    border-radius: 12px;
+    border: 2px solid var(--fg-slate);
+    background: var(--muted);
     flex-shrink: 0;
 }
 
-.product-head {
-    flex: 1;
-    min-width: 0;
-}
-
-.product-name {
-    font-size: 15px;
+.op-title {
+    font-size: 14px;
     font-weight: 600;
-    line-height: 1.4;
-    color: #1a1a1a;
+    line-height: 1.45;
 }
 
-.product-price {
-    margin-top: 8px;
-    font-size: 20px;
-    font-weight: 700;
-    color: #ee4d2d;
-}
-
-.product-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
+.op-price {
     margin-top: 8px;
 }
 
-.badge {
-    display: inline-block;
-    padding: 2px 9px;
-    border-radius: 10px;
-    background: #ee4d2d;
-    color: white;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.product-meta {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid #f0f0f0;
-}
-
-.meta-item {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
-.meta-label {
-    font-size: 10px;
-    color: #999;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-
-.meta-value {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1a1a1a;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.section-subtitle {
+.op-meta {
+    margin-top: 6px;
     font-size: 12px;
-    color: #999;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-bottom: 8px;
-}
-
-.product-specs {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid #f0f0f0;
-}
-
-.specs-grid {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 5px 14px;
-    font-size: 12px;
-}
-
-.specs-grid dt {
-    color: #777;
-}
-
-.specs-grid dd {
-    color: #1a1a1a;
+    color: var(--muted-fg);
     font-weight: 500;
-    word-break: break-word;
 }
 
-/* ============================
-   AI understanding
-   ============================ */
-.ai-block {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid #f0f0f0;
+/* ============================================================
+   12. Result cards
+   ============================================================ */
+.result-card {
+    position: relative;
 }
 
-.ai-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px 14px;
-    font-size: 13px;
-    color: #444;
-}
-
-.ai-specs-label {
-    margin-top: 10px;
-    font-size: 12px;
-    color: #444;
-}
-
-.ai-specs {
-    margin-top: 4px;
-    background: #f9f9f9;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    color: #555;
-}
-
-.ai-specs ul {
+/* Best & Cheapest sections are the sticker themselves -> flatten inner card */
+.card-best .result-card,
+.card-cheap .result-card {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
     margin: 0;
-    padding-left: 16px;
+    transform: none;
 }
 
-/* ============================
-   Search result cards
-   ============================ */
-.search-card {
-    background: #ffffff;
-    border-radius: 8px;
-    padding: 10px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
-    border: 1px solid #eee;
-    border-left: 4px solid #ccc;
+/* Other results: muted mini panels grouped inside the card */
+.other-results .result-card {
+    background: var(--muted);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
 }
 
-.search-card.badge-mismatch {
-    border-left-color: #dc3545;
+.other-results .result-card:last-child {
+    margin-bottom: 0;
 }
 
-.search-card.badge-cheaper {
-    border-left-color: #28a745;
-}
-
-.search-head {
+/* ============================================================
+   13. Badges
+   ============================================================ */
+.rc-head {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
 }
 
-.market-badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 10px;
-    color: white;
-    font-size: 11px;
-    font-weight: 600;
+/* Marketplace colour accents (kept playful) */
+.badge-marketplace.market-shopee {
+    background: #EE4D2D;
 }
 
-.market-tokopedia {
-    background: #03ac0e;
+.badge-marketplace.market-tokopedia {
+    background: #03AC0E;
 }
 
-.market-lazada {
-    background: #0f146d;
+.badge-marketplace.market-lazada {
+    background: #0F146D;
 }
 
-.market-blibli {
-    background: #d81e05;
+.badge-marketplace.market-blibli {
+    background: #D81E05;
 }
 
-.market-other {
-    background: #6c757d;
+.badge-marketplace.market-other {
+    background: var(--muted-fg);
 }
 
 .status-badge {
     display: inline-block;
-    padding: 2px 10px;
-    border-radius: 10px;
+    padding: 4px 10px;
+    border-radius: 999px;
     font-size: 11px;
     font-weight: 700;
-}
-
-.status-badge.red {
-    background: #fde8ea;
-    color: #b02a37;
+    border: 2px solid var(--fg-slate);
 }
 
 .status-badge.green {
-    background: #e6f7ea;
-    color: #1e7e34;
+    background: #D1FAE5;
+    color: #047857;
+}
+
+.status-badge.yellow {
+    background: #FEF3C7;
+    color: #B45309;
+}
+
+.status-badge.red {
+    background: #FEE2E2;
+    color: #B91C1C;
 }
 
 .status-badge.gray {
-    background: #eef1f4;
-    color: #495057;
+    background: var(--muted);
+    color: #475569;
 }
 
-.search-title {
-    font-weight: 600;
-    color: #222;
-    line-height: 1.4;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.search-snippet {
-    color: #888;
-    font-size: 12px;
-    margin-top: 4px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.search-price {
-    margin-top: 6px;
-    font-size: 15px;
+/* ============================================================
+   14. Result text
+   ============================================================ */
+.rc-title {
+    font-size: 14px;
     font-weight: 700;
-    color: #1a1a1a;
+    color: var(--fg-slate);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
-.search-price.missing {
+.rc-snippet {
+    color: var(--muted-fg);
     font-size: 12px;
-    font-weight: 500;
-    color: #999;
+    margin-top: 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ============================================================
+   15. Price Text
+   ============================================================ */
+.price.missing {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted-fg);
     font-style: italic;
 }
 
-.search-link {
-    display: inline-block;
-    margin-top: 8px;
-    color: #1a73e8;
+/* ============================================================
+   16. Reason Text
+   ============================================================ */
+.reason-text {
     font-size: 13px;
-    font-weight: 600;
+    color: var(--fg-slate);
+    line-height: 1.55;
+    font-style: italic;
+}
+
+/* ============================================================
+   17. Links & notices
+   ============================================================ */
+.rc-link {
+    display: inline-block;
+    margin-top: 12px;
+    color: var(--accent-violet);
+    font-family: 'Outfit', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
     text-decoration: none;
 }
 
-.search-link:hover {
+.rc-link:hover {
     text-decoration: underline;
 }
 
-/* ============================
-   AI Recommendation box
-   ============================ */
-.reco-box {
-    padding: 14px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1.5;
-}
-
-.reco-box.reco-good {
-    background: #e6f7ea;
-    color: #1e7e34;
-    border: 1px solid #b7e4c2;
-}
-
-.reco-box.reco-warning {
-    background: #fff8e1;
-    color: #8a6d00;
-    border: 1px solid #ffe69c;
-}
-
-.reco-box.reco-bad {
-    background: #fde8ea;
-    color: #b02a37;
-    border: 1px solid #f5c2c7;
-}
-
-.reco-box.reco-info {
-    background: #eef1f4;
-    color: #495057;
-    border: 1px solid #dee2e6;
-}
-
-/* ============================
-   Settings
-   ============================ */
-.settings-label {
-    display: block;
+.notice {
     font-size: 12px;
-    color: #666;
-    margin-bottom: 6px;
-}
-
-.settings-row {
-    display: flex;
-    gap: 8px;
-}
-
-.settings-input {
-    flex: 1;
-    min-width: 0;
-    padding: 9px 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 13px;
-    outline: none;
-}
-
-.settings-input:focus {
-    border-color: #ee4d2d;
-}
-
-.btn-save {
-    padding: 9px 18px;
-    background: #ee4d2d;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
     font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-    flex-shrink: 0;
+    color: #B45309;
+    background: #FEF3C7;
+    border: 2px solid var(--fg-slate);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
 }
 
-.btn-save:hover {
-    background: #d73211;
-}
-
-.settings-status {
-    margin-top: 8px;
-    font-size: 12px;
-    color: #155724;
-}
-
-.settings-status.error {
-    color: #b02a37;
-}
-
-/* ============================
-   Footer
-   ============================ */
-.footer {
-    padding: 12px 20px;
-    text-align: center;
-    border-top: 1px solid #e5e5e5;
-    background: white;
-    border-radius: 8px;
-}
-
-.footer p {
-    color: #999;
-    font-size: 11px;
-    font-style: italic;
-}
-
-/* ============================
-   Utility
-   ============================ */
+/* ============================================================
+   18. Utility
+   ============================================================ */
 .muted {
-    color: #999;
+    color: var(--muted-fg);
 }
 
 .hidden {
