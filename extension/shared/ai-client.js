@@ -178,6 +178,91 @@ IMPORTANT: Return ONLY valid JSON matching this exact schema:
 
         return await this.requestJson(prompt, groqKey);
     }
+
+    /**
+     * Helper: Buat prompt untuk ringkasan ulasan pembeli (Review Intelligence)
+     * @param {string} productTitle
+     * @param {Array<string>} reviews
+     * @returns {string}
+     */
+    buildReviewSummaryPrompt(productTitle, reviews) {
+        const reviewListText = reviews.map((r, idx) => `[Ulasan ${idx + 1}]: "${r}"`).join('\n');
+        const count = reviews.length;
+        const confidenceInstruction = count <= 2
+            ? 'CONFIDENCE RULE: There are only 1-2 reviews, so you MUST set "confidence": "LOW".'
+            : (count >= 10 ? 'CONFIDENCE RULE: There are 10 or more reviews, set "confidence": "HIGH".' : 'CONFIDENCE RULE: There are 3-9 reviews, set "confidence": "MEDIUM".');
+
+        return `You are an elite product quality analyst and consumer risk auditor for Indonesian e-commerce.
+Analyze customer reviews for the following product:
+Product: "${productTitle || '-'}"
+
+Reviews Data:
+${reviewListText}
+
+TASK:
+Identify true product qualities and operational red flags based ONLY on the provided reviews.
+Categorize findings into:
+1. "pros": 2 to 4 bullet points of genuine product strengths (build quality, performance, accurate description). Write in clear, concise Indonesian.
+2. "cons": 2 to 4 bullet points of drawbacks or minor weaknesses (e.g., fan noise, battery life, tricky setup, plastic feel). Write in clear, concise Indonesian.
+3. "risks": 1 to 3 critical RED FLAGS or warnings for buyers (e.g., high defect rate, suspected counterfeit/KW, easily broken parts, misleading photos, seller refused warranty). If no major risk exists, state "Tidak ditemukan resiko fatal pada ulasan."
+4. "confidence": "HIGH" (if >= 10 substantive reviews), "MEDIUM" (if 3-9 reviews), "LOW" (if 1-2 reviews or reviews are vague). ${confidenceInstruction}
+
+RULES:
+- Ignore logistics/courier praise (e.g. "kurir ramah", "pengiriman kilat") — focus 100% on the product and seller integrity.
+- Be objective and concise (1 short sentence per point).
+- Return ONLY a valid JSON object matching this schema:
+{
+  "pros": ["Keunggulan 1", "Keunggulan 2"],
+  "cons": ["Kekurangan 1", "Kekurangan 2"],
+  "risks": ["Resiko atau Red Flag 1"],
+  "confidence": "HIGH"
+}`;
+    }
+
+    /**
+     * (Review Intelligence) Meringkas ulasan pembeli via Groq AI.
+     * Mengembalikan objek pros, cons, risks, dan confidence.
+     * @param {string} productTitle
+     * @param {Array<string>} reviews
+     * @returns {Promise<{pros:Array, cons:Array, risks:Array, confidence:string, status?:string}|null>}
+     */
+    async summarizeReviews(productTitle, reviews) {
+        if (!reviews || !Array.isArray(reviews) || reviews.length === 0) {
+            return {
+                pros: [],
+                cons: [],
+                risks: [],
+                confidence: "LOW",
+                status: "NO_REVIEWS",
+                message: "Belum ada ulasan pembeli yang dapat dianalisis untuk produk ini."
+            };
+        }
+
+        const { groqKey } = await chrome.storage.local.get(['groqKey']);
+        if (!groqKey) {
+            throw new Error("API Key Groq belum diisi. Silakan isi di menu Settings.");
+        }
+
+        try {
+            const prompt = this.buildReviewSummaryPrompt(productTitle, reviews);
+            const result = await this.requestJson(prompt, groqKey);
+
+            if (!result || typeof result !== 'object') {
+                throw new Error("Gagal memproses ringkasan ulasan dari AI.");
+            }
+
+            return {
+                pros: Array.isArray(result.pros) ? result.pros : [],
+                cons: Array.isArray(result.cons) ? result.cons : [],
+                risks: Array.isArray(result.risks) ? result.risks : [],
+                confidence: result.confidence || (reviews.length >= 10 ? "HIGH" : (reviews.length >= 3 ? "MEDIUM" : "LOW")),
+                status: "SUCCESS"
+            };
+        } catch (error) {
+            console.error('[Shopping Intelligence] summarizeReviews error:', error);
+            throw error;
+        }
+    }
 }
 
 // Bind ke window object
