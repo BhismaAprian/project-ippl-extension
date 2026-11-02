@@ -63,6 +63,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         try {
             const product = adapter.extractProduct();
+            if (!product) {
+                sendResponse({
+                    success: false,
+                    product: null,
+                    error: `Gagal membaca informasi produk dari ${adapter.marketplaceName}.`
+                });
+                return true;
+            }
             sendResponse({ success: true, product, error: null });
         } catch (e) {
             sendResponse({ success: false, product: null, error: e.message });

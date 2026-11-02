@@ -16,26 +16,9 @@ class TokopediaAdapter extends window.BaseAdapter {
      * @returns {boolean}
      */
     matchesUrl(url) {
-        if (!url || !url.includes('tokopedia.com')) return false;
-
+        if (!url) return false;
         try {
-            const parsedUrl = new URL(url);
-            const pathname = parsedUrl.pathname;
-
-            // Pastikan bukan halaman statis/sistem Tokopedia yang sering muncul di path awal
-            const ignoredPaths = ['/discovery', '/cart', '/user', '/search', '/promo', '/help', '/order-list'];
-            if (ignoredPaths.some(path => pathname.startsWith(path))) {
-                return false;
-            }
-
-            // Gunakan window.URL_PATTERNS jika ada
-            const patterns = window.URL_PATTERNS;
-            if (patterns && patterns.tokopedia) {
-                return patterns.tokopedia.test(pathname);
-            }
-
-            // Fallback Pattern khas PDP Tokopedia: /{seller_username}/{product_slug}
-            return /\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+/.test(pathname);
+            return new URL(url).hostname.includes('tokopedia.com');
         } catch (e) {
             return false;
         }
@@ -46,6 +29,21 @@ class TokopediaAdapter extends window.BaseAdapter {
      * @returns {boolean}
      */
     hasProductMarkers() {
+        try {
+            const parsedUrl = new URL(window.location.href);
+            const pathname = parsedUrl.pathname;
+            const ignoredPaths = ['/discovery', '/cart', '/user', '/search', '/promo', '/help', '/order-list', '/p/'];
+            if (ignoredPaths.some(path => pathname.startsWith(path))) {
+                return false;
+            }
+            const segments = pathname.split('/').filter(Boolean);
+            if (segments.length < 2) {
+                return false;
+            }
+        } catch (e) {
+            return false;
+        }
+
         // 1. Cek Variabel Global Tokopedia (sangat presisi berdasarkan View Page Source)
         if (window.__PAGE_TYPE__ && window.__PAGE_TYPE__.includes('productdetailpage')) {
             return true;

@@ -4,24 +4,24 @@ class LazadaAdapter extends window.BaseAdapter {
     }
 
     matchesUrl(url) {
+        if (!url) return false;
         try {
             const parsedUrl = new URL(url);
-            if (!parsedUrl.hostname.includes('lazada.co.id')) return false;
-
-            // Memeriksa pola path /products/ atau adanya parameter itemId / pdp-i
-            const pathname = parsedUrl.pathname;
-            const isProductPath = /\/products\/.*-i\d+/i.test(pathname) || pathname.startsWith('/products/');
-
-            if (isProductPath) return true;
-
-            // Fallback ke pattern bawaan jika ada
-            return window.URL_PATTERNS?.lazada ? window.URL_PATTERNS.lazada.test(pathname) : false;
+            return parsedUrl.hostname.includes('lazada.co.id');
         } catch (e) {
             return false;
         }
     }
 
     hasProductMarkers() {
+        try {
+            const pathname = window.location.pathname;
+            const isProductPath = /\/products\/.*-i\d+/i.test(pathname) || pathname.startsWith('/products/');
+            if (!isProductPath) return false;
+        } catch (e) {
+            return false;
+        }
+
         const markers = [
             'meta[property="og:type"][content="product"]',
             'script[type="application/ld+json"]',
@@ -40,6 +40,10 @@ class LazadaAdapter extends window.BaseAdapter {
         }
 
         return false;
+    }
+
+    extractProduct() {
+        throw new Error('Fitur ekstraksi detail produk Lazada sedang dalam tahap pengembangan.');
     }
 }
 

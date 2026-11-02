@@ -16,15 +16,12 @@ class ShopeeAdapter extends window.BaseAdapter {
      * @returns {boolean}
      */
     matchesUrl(url) {
-        if (!url || !url.includes('shopee.co.id')) return false;
-
-        const patterns = window.URL_PATTERNS;
-        if (!patterns || !patterns.shopee) {
-            // Fallback pattern khas Shopee: -i.{shop_id}.{item_id}
-            return /-i\.\d+\.\d+/.test(new URL(url).pathname);
+        if (!url) return false;
+        try {
+            return new URL(url).hostname.includes('shopee.co.id');
+        } catch (e) {
+            return false;
         }
-
-        return patterns.shopee.test(new URL(url).pathname);
     }
 
     /**
@@ -32,6 +29,14 @@ class ShopeeAdapter extends window.BaseAdapter {
      * @returns {boolean}
      */
     hasProductMarkers() {
+        try {
+            const pathname = window.location.pathname;
+            const isProductUrl = /-i\.\d+\.\d+/.test(pathname) || /\/product\/\d+\/\d+/.test(pathname);
+            if (!isProductUrl) return false;
+        } catch (e) {
+            return false;
+        }
+
         // Cek meta tag og:type
         const ogType = document.querySelector('meta[property="og:type"]')?.getAttribute('content');
         if (ogType && (ogType.includes('product') || ogType === 'og:product')) {
