@@ -42,8 +42,12 @@ class BaseAdapter {
    * (Placeholder minggu 2) Ekstrak data produk dari DOM.
    * @returns {object|null}
    */
-    extractProduct() {
-        throw new Error('extractProduct not yet implemented for week 1');
+    /**
+     * (Review Intelligence) Ekstrak daftar ulasan teks pembeli dari DOM.
+     * @returns {Promise<Array<string>>}
+     */
+    async extractReviews() {
+        return [];
     }
 }
 window.BaseAdapter = BaseAdapter;

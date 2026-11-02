@@ -247,6 +247,106 @@ class ShopeeAdapter extends window.BaseAdapter {
 
         return productData;
     }
+
+    /**
+     * Helper: Memicu pemuatan ulasan jika belum di-render oleh React Shopee
+     */
+    async ensureReviewsLoaded() {
+        const existing = document.querySelectorAll(
+            '.shopee-product-rating, [data-testid="product-comment-item"], .shopee-product-comment-list > div'
+        );
+        if (existing && existing.length >= 3) return true;
+
+        // Cari jangkar rating di halaman
+        const anchor = document.querySelector(
+            '.product-ratings, #product-rating-overview, [class*="product-rating"], div.page-product__rating'
+        );
+        if (anchor) {
+            try {
+                anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Beri jeda 600ms agar React me-render komentar
+                await new Promise(resolve => setTimeout(resolve, 600));
+            } catch (e) {
+                // Ignore scroll error
+            }
+        }
+        return true;
+    }
+
+    /**
+     * (Review Intelligence) Ekstrak daftar ulasan teks pembeli dari DOM Shopee
+     * @returns {Promise<Array<string>>}
+     */
+    async extractReviews() {
+        await this.ensureReviewsLoaded();
+
+        const rawReviews = [];
+        const seen = new Set();
+
+        // 1. Selector Utama (Shopee PDP Standard)
+        let items = document.querySelectorAll('div.shopee-product-rating');
+
+        // 2. Fallback Selector 1 (Semantic Data-Testid / Alternate Class)
+        if (!items || items.length === 0) {
+            items = document.querySelectorAll('[data-testid="product-comment-item"], div.product-rating-overview ~ div');
+        }
+
+        // 3. Fallback Selector 2 (Struktur Generik List)
+        if (!items || items.length === 0) {
+            items = document.querySelectorAll('div.shopee-product-comment-list > div');
+        }
+
+        if (items && items.length > 0) {
+            items.forEach(item => {
+                let textEl = item.querySelector(
+                    'div.shopee-product-rating__content, div._28I_B3, [data-testid="comment-text"], div.Rk3V3e'
+                );
+
+                let text = '';
+                if (textEl) {
+                    text = textEl.textContent || '';
+                } else {
+                    // Fallback DOM traversal: cari div teks yang bukan meta/author
+                    const candidateDivs = item.querySelectorAll('div');
+                    for (const div of candidateDivs) {
+                        const content = div.textContent?.trim() || '';
+                        // Ambil div yang punya panjang wajar dan bukan penanda tanggal/username
+                        if (content.length >= 15 && content.length <= 600 && !/\d{4}-\d{2}-\d{2}/.test(content)) {
+                            text = content;
+                            break;
+                        }
+                    }
+                }
+
+                // Sanitasi Teks
+                text = text
+                    .replace(/<[^>]*>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                // Filter ulasan kosong atau terlalu pendek
+                if (!text || text.length < 10) return;
+
+                // Filter boilerplate murni yang tidak informatif
+                if (/^(pengiriman cepat|kurir ramah|barang sampai dengan selamat|makasih seller|mantap|mantap gan|sip|oke|bagus|barang belum dicoba semoga awet)([\s.,!]*)$/i.test(text)) {
+                    return;
+                }
+
+                // Truncate teks agar hemat token Groq (maks 180 karakter)
+                if (text.length > 180) {
+                    text = text.substring(0, 180) + '...';
+                }
+
+                if (!seen.has(text)) {
+                    seen.add(text);
+                    rawReviews.push(text);
+                }
+            });
+        }
+
+        // Batasi maksimal 25 ulasan teratas
+        return rawReviews.slice(0, 25);
+    }
 }
 
 // Bind ke window object

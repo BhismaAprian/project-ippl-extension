@@ -78,6 +78,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'EXTRACT_REVIEWS') {
+        const currentUrl = window.location.href;
+        const adapter = ADAPTERS.find(a => a.matchesUrl(currentUrl));
+
+        if (!adapter || typeof adapter.extractReviews !== 'function') {
+            sendResponse({ success: true, reviews: [] });
+            return true;
+        }
+
+        adapter.extractReviews()
+            .then(reviews => {
+                sendResponse({ success: true, reviews: reviews || [] });
+            })
+            .catch(e => {
+                console.error('[Shopping Intelligence] EXTRACT_REVIEWS error:', e);
+                sendResponse({ success: false, reviews: [], error: e.message });
+            });
+        return true;
+    }
+
     if (request.action === 'UNDERSTAND_PRODUCT') {
         const ai = new window.AIClient();
         ai.understandProduct(request.product)
