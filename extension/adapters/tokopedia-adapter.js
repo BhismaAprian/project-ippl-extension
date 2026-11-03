@@ -5,8 +5,9 @@
  * Mengombinasikan window.__PAGE_TYPE__, Schema.org JSON-LD, Meta OG, dan DOM Fallback.
  */
 
-class TokopediaAdapter extends window.BaseAdapter {
-    get marketplaceName() {
+if (!window.TokopediaAdapter) {
+    class TokopediaAdapter extends window.BaseAdapter {
+        get marketplaceName() {
         return 'tokopedia';
     }
 
@@ -157,3 +158,4 @@ class TokopediaAdapter extends window.BaseAdapter {
 
 // Pendaftaran ke scope global window
 window.TokopediaAdapter = TokopediaAdapter;
+}

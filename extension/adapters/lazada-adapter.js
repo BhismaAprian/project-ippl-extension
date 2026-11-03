@@ -1,5 +1,6 @@
-class LazadaAdapter extends window.BaseAdapter {
-    get marketplaceName() {
+if (!window.LazadaAdapter) {
+    class LazadaAdapter extends window.BaseAdapter {
+        get marketplaceName() {
         return 'lazada';
     }
 
@@ -48,3 +49,4 @@ class LazadaAdapter extends window.BaseAdapter {
 }
 
 window.LazadaAdapter = LazadaAdapter;
+}
