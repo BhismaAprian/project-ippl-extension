@@ -634,8 +634,29 @@ async function analyze(tab) {
                 return emptyData;
             }
 
-            const ai = new window.AIClient();
-            const summary = await ai.summarizeReviews(product.title, reviews);
+            let summary = null;
+            try {
+                const ai = new window.AIClient();
+                summary = await ai.summarizeReviews(product.title, reviews);
+            } catch (aiErr) {
+                console.warn('[Shopping Intelligence] Groq summarizeReviews gagal:', aiErr);
+                summary = null;
+            }
+
+            if (!summary || summary.status !== 'SUCCESS') {
+                const fallbackData = {
+                    status: 'FALLBACK_RAW',
+                    rawReviews: reviews,
+                    pros: reviews.slice(0, 3).map(r => ({ text: typeof r === 'string' ? r : r.text })),
+                    cons: [],
+                    risks: [],
+                    confidence: 'LOW',
+                    message: 'AI gagal merangkum, tetapi berikut adalah ulasan asli dari pembeli:'
+                };
+                renderReviewSummary(fallbackData);
+                return fallbackData;
+            }
+
             renderReviewSummary(summary);
             return summary;
         } catch (err) {
