@@ -30,6 +30,40 @@
 
         <section id="originalProduct" class="card hidden"></section>
 
+        <section id="reviewSummarySection" class="card card-review hidden">
+            <div class="rc-head">
+                <span class="review-title font-heading">🛡️ Review Intelligence</span>
+                <span id="reviewConfidenceBadge" class="status-badge green">Akurasi Tinggi</span>
+            </div>
+
+            <div id="reviewLoadingIndicator" class="review-subloading hidden">
+                <span class="spinner-dot"></span> Menganalisis ulasan pembeli...
+            </div>
+
+            <div id="reviewEmptyMessage" class="review-empty-message hidden">
+                Belum ada ulasan pembeli yang dapat dianalisis untuk produk ini.
+            </div>
+
+            <div id="reviewRisksContainer" class="risk-alert-box hidden">
+                <div class="risk-header">
+                    <span class="risk-icon">⚠️</span>
+                    <span class="risk-label">Perhatian & Resiko Pembeli</span>
+                </div>
+                <ul id="reviewRisksList" class="risk-list"></ul>
+            </div>
+
+            <div id="reviewProsConsGrid" class="pros-cons-grid">
+                <div class="pros-col">
+                    <h3 class="pros-header">✅ Kelebihan</h3>
+                    <ul id="reviewProsList" class="bullet-list pros-list"></ul>
+                </div>
+                <div class="cons-col">
+                    <h3 class="cons-header">❌ Kekurangan</h3>
+                    <ul id="reviewConsList" class="bullet-list cons-list"></ul>
+                </div>
+            </div>
+        </section>
+
         <section id="bestValueSection" class="card card-best hidden"></section>
         <section id="cheapestSection" class="card card-cheap hidden"></section>
         <section id="otherResultsSection" class="card other-results hidden"></section>

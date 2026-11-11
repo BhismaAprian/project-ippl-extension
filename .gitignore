@@ -1,4 +1,7 @@
 
 *.html
+!extension/**/*.html
 progres.md
 *.md
+!PROGRESS.md
+/shopee

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Intelligence Companion</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+
+<body>
+    <div class="bg-decorations">
+        <span class="shape-circle"></span>
+        <span class="shape-triangle"></span>
+        <span class="shape-square"></span>
+    </div>
+
+    <div class="sidepanel-container">
+        <!-- Sticky Header -->
+        <header class="sticky-header">
+            <div class="header-brand">
+                <span class="brand-icon">⚡</span>
+                <span class="brand-name">Shopping Intelligence</span>
+                <span class="version-tag" id="version">v0.2.0</span>
+            </div>
+            <div class="header-actions">
+                <button id="reanalyzeBtn" type="button" class="btn btn-action" title="Analisis Ulang Halaman Ini">
+                    <span class="btn-icon">🔄</span> Analisis
+                </button>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="state-card loading-state">
+            <div class="spinner-circle"></div>
+            <div class="loading-text font-heading" id="loadingText">Menganalisis halaman produk...</div>
+            <div class="loading-subtext">Mengekstrak MFE State, Ulasan, dan Garansi</div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="state-card error-state hidden"></div>
+
+        <!-- Hero Card: Original Product -->
+        <section id="originalProduct" class="card card-hero hidden"></section>
+
+        <!-- Section 1: Ultimate Deal Checker (BUY / CHECK / WAIT) -->
+        <section id="dealCheckerSection" class="card card-deal hidden">
+            <div class="deal-header">
+                <div class="deal-title font-heading">
+                    <span>🎯</span> Ultimate Deal Checker
+                </div>
+                <div id="dealVerdictBadge" class="verdict-badge buy">BUY</div>
+            </div>
+
+            <div class="deal-score-wrapper">
+                <div class="deal-score-circle">
+                    <span id="dealScoreNumber" class="score-number font-heading">85</span>
+                    <span class="score-unit">%</span>
+                </div>
+                <div class="deal-score-meta">
+                    <div class="deal-score-label font-heading">Deal Score</div>
+                    <div id="dealVerdictReason" class="deal-reason-text">Pilihan solid! Harga kompetitif dengan ulasan positif.</div>
+                </div>
+            </div>
+
+            <!-- Score Breakdown Bars -->
+            <div class="score-breakdown">
+                <div class="score-bar-item">
+                    <div class="score-bar-label">
+                        <span>Harga (40%)</span>
+                        <span id="priceScoreVal">80%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div id="priceProgressBar" class="progress-fill fill-price" style="width: 80%;"></div>
+                    </div>
+                </div>
+                <div class="score-bar-item">
+                    <div class="score-bar-label">
+                        <span>Ulasan (40%)</span>
+                        <span id="reviewScoreVal">85%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div id="reviewProgressBar" class="progress-fill fill-review" style="width: 85%;"></div>
+                    </div>
+                </div>
+                <div class="score-bar-item">
+                    <div class="score-bar-label">
+                        <span>Garansi (20%)</span>
+                        <span id="warrantyScoreVal">100%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div id="warrantyProgressBar" class="progress-fill fill-warranty" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dealCheaperAlert" class="deal-cheaper-box hidden"></div>
+        </section>
+
+        <!-- Section 2: Deep Review Analysis (Interactive Click-to-Scroll) -->
+        <section id="reviewSummarySection" class="card card-review hidden">
+            <div class="rc-head">
+                <div class="rc-title-group">
+                    <span class="rc-title font-heading">🛡️ Deep Review Intelligence</span>
+                    <div class="rc-hint">Klik ulasan untuk langsung scroll ke halaman asli</div>
+                </div>
+                <span id="reviewConfidenceBadge" class="status-badge green">Akurasi Tinggi</span>
+            </div>
+
+            <div id="reviewLoadingIndicator" class="review-subloading hidden">
+                <span class="spinner-dot"></span> Menganalisis sentimen dan resiko ulasan...
+            </div>
+
+            <div id="reviewEmptyMessage" class="review-empty-message hidden">
+                Belum ada ulasan pembeli yang dapat dianalisis untuk produk ini.
+            </div>
+
+            <!-- Fallback Review Container (Jika AI Gagal Merangkum) -->
+            <div id="reviewFallbackContainer" class="review-fallback-container hidden">
+                <div class="review-fallback-banner">
+                    <span class="fallback-icon">⚠️</span>
+                    <span id="reviewFallbackMessage" class="fallback-text">AI gagal merangkum, tetapi berikut adalah ulasan asli dari pembeli:</span>
+                </div>
+                <ul id="reviewFallbackList" class="interactive-list fallback-list"></ul>
+            </div>
+
+            <!-- Buyer Risks Alert Box -->
+            <div id="reviewRisksContainer" class="risk-alert-box hidden">
+                <div class="risk-header">
+                    <span class="risk-icon">⚠️</span>
+                    <span class="risk-label font-heading">Perhatian & Resiko Pembeli</span>
+                </div>
+                <ul id="reviewRisksList" class="interactive-list risk-list"></ul>
+            </div>
+
+            <!-- 2-Column Pros & Cons Grid -->
+            <div id="reviewProsConsGrid" class="pros-cons-grid">
+                <div class="pros-col">
+                    <h3 class="pros-header font-heading">✅ Kelebihan</h3>
+                    <ul id="reviewProsList" class="interactive-list pros-list"></ul>
+                </div>
+                <div class="cons-col">
+                    <h3 class="cons-header font-heading">❌ Kekurangan</h3>
+                    <ul id="reviewConsList" class="interactive-list cons-list"></ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Warranty Intelligence (Audit Garansi) -->
+        <section id="warrantySection" class="card card-warranty hidden">
+            <div class="warranty-head">
+                <span class="warranty-icon">🛡️</span>
+                <span class="warranty-title font-heading">Warranty Intelligence</span>
+                <span id="warrantyStatusBadge" class="status-badge green">Garansi Resmi</span>
+            </div>
+
+            <div id="warrantyDiscrepancyAlert" class="warranty-alert-box hidden">
+                <div class="w-alert-title font-heading">⚠️ Inkonsistensi Garansi Terdeteksi</div>
+                <div id="warrantyDiscrepancyText" class="w-alert-desc"></div>
+            </div>
+
+            <div class="warranty-details-grid">
+                <div class="warranty-item">
+                    <div class="w-label">Status Sistem Shopee</div>
+                    <div id="warrantyAttrVal" class="w-val">-</div>
+                </div>
+                <div class="warranty-item">
+                    <div class="w-label">Teks Deskripsi Penjual</div>
+                    <div id="warrantyDescVal" class="w-val">-</div>
+                </div>
+            </div>
+
+            <div class="warranty-tips-box">
+                <span class="tips-icon">💡</span>
+                <span id="warrantyTipsText" class="tips-text">Simpan invoice dan video unboxing utuh untuk syarat klaim garansi.</span>
+            </div>
+        </section>
+
+        <!-- Section 4: Cross-Market Alternatives (Exa + Groq) -->
+        <section id="crossMarketSection" class="card card-cross-market hidden">
+            <div class="section-title-wrap">
+                <div class="section-title-group">
+                    <h2 class="section-title font-heading">⚡ Alternatif Lintas Marketplace</h2>
+                    <div class="section-subtitle">Ditemukan via Exa Neural Search &amp; Kurasi AI</div>
+                </div>
+                <span id="crossMarketCountBadge" class="status-badge purple">0 Alternatif</span>
+            </div>
+
+            <!-- Loading State for Cross-Market -->
+            <div id="crossMarketLoading" class="subloading-box hidden">
+                <span class="spinner-dot"></span> Mencari alternatif di Tokopedia, Lazada, dan Blibli...
+            </div>
+
+            <!-- Empty / Fallback notice -->
+            <div id="crossMarketEmpty" class="empty-notice-box hidden">
+                <div class="empty-icon">🔍</div>
+                <div id="crossMarketEmptyText" class="empty-text">Belum ada alternatif lintas marketplace yang cocok ditemukan.</div>
+            </div>
+
+            <!-- Best Value & Cheapest Highlight Cards -->
+            <div id="bestValueSection" class="deal-highlight-card best-value hidden"></div>
+            <div id="cheapestSection" class="deal-highlight-card cheapest hidden"></div>
+            <div id="otherResultsSection" class="other-results-card hidden"></div>
+        </section>
+
+        <!-- Section 5: Native Smart Recommendations (Shopee "Kamu Mungkin Juga Suka") -->
+        <section id="similarRecsSection" class="card card-native-similar hidden">
+            <div class="section-title-wrap">
+                <div class="section-title-group">
+                    <h2 class="section-title font-heading">✨ Produk Serupa di Shopee</h2>
+                    <div class="section-subtitle">Rekomendasi toko langsung dari Shopee (0 Jeda API)</div>
+                </div>
+                <span class="status-badge orange">🟠 Shopee Native</span>
+            </div>
+
+            <div id="similarRecsLoading" class="subloading-box hidden">
+                <span class="spinner-dot"></span> Membaca rekomendasi produk dari halaman...
+            </div>
+            <div id="similarRecsEmpty" class="empty-notice-box hidden">
+                Rekomendasi produk serupa belum termuat di halaman Shopee ini.
+            </div>
+
+            <div id="similarRecsList" class="similar-grid"></div>
+        </section>
+
+        <!-- Section 6: Native Alternative Search (Brief Active Window) -->
+        <section id="alternatives-section" class="card card-alternatives">
+            <div class="section-title-wrap">
+                <div class="section-title-group">
+                    <h2 class="section-title font-heading">🔍 Cari Alternatif Harga</h2>
+                    <div class="section-subtitle">Pencarian native marketplace (visible-tab) &amp; Exa fallback</div>
+                </div>
+            </div>
+
+            <div class="alternatives-btn-group" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                <button id="native-search-btn" type="button" class="btn btn-action" style="background: #EE4D2D; color: #fff;">
+                    🟠 Cari Alternatif (Shopee Native)
+                </button>
+                <button id="exa-search-btn" type="button" class="btn btn-action" style="background: #6366F1; color: #fff;">
+                    🟣 Cari via Exa (Cadangan)
+                </button>
+            </div>
+
+            <!-- Progress Box -->
+            <div id="search-progress" class="subloading-box hidden">
+                <span class="spinner-dot"></span>
+                <span id="search-progress-text">Mempersiapkan pencarian...</span>
+            </div>
+
+            <!-- Blocked / Security Warning Box -->
+            <div id="search-blocked" class="risk-alert-box hidden" style="margin-bottom: 12px;">
+                <div class="risk-header">
+                    <span class="risk-icon">🛡️</span>
+                    <span class="risk-label font-heading">Verifikasi Keamanan Terdeteksi di Shopee</span>
+                </div>
+                <div style="font-size: 0.8rem; margin: 6px 0; color: #475569;">
+                    Shopee meminta verifikasi puzzle/captcha. Buka halaman secara manual atau gunakan Exa.
+                </div>
+                <a id="manual-open-link" target="_blank" rel="noopener noreferrer" class="btn btn-action" style="display: inline-block; padding: 4px 10px; font-size: 0.75rem; text-decoration: none; margin-top: 4px;">
+                    Buka Manual ↗
+                </a>
+            </div>
+
+            <!-- Results List -->
+            <div id="search-results" class="similar-grid"></div>
+        </section>
+
+        <!-- Section 7: Settings Accordion -->
+        <section id="settingsSection" class="card settings">
+            <details class="settings-accordion">
+                <summary class="settings-summary font-heading">
+                    <span>⚙️ Pengaturan API Key</span>
+                    <span class="accordion-arrow">▼</span>
+                </summary>
+                <div class="settings-content">
+                    <label for="inputGroqKey">Groq API Key (openai/gpt-oss-120b)</label>
+                    <input id="inputGroqKey" type="password" placeholder="gsk_..." autocomplete="off">
+                    <label for="inputExaKey">Exa API Key (Neural Search)</label>
+                    <input id="inputExaKey" type="password" placeholder="eza_..." autocomplete="off">
+                    <button id="saveKeysBtn" type="button" class="btn btn-save">Simpan Kunci</button>
+                    <small id="keyStatus"></small>
+                </div>
+            </details>
+        </section>
+    </div>
+
+    <!-- Scripts -->
+    <script src="../shared/constant.js"></script>
+    <script src="../shared/ai-client.js"></script>
+    <script src="../shared/gatekeeper.js"></script>
+    <script src="../shared/base-search-provider.js"></script>
+    <script src="../shared/candidate-normalizer.js"></script>
+    <script src="../shared/pdp-url-classifier.js"></script>
+    <script src="../shared/query-builder.js"></script>
+    <script src="../shared/native-search-protocol.js"></script>
+    <script src="../manifest/marketplace-manifest/shopee.js"></script>
+    <script src="../shared/providers/shopee-native-provider.js"></script>
+    <script src="../shared/providers/exa-provider.js"></script>
+    <script src="../shared/search-client.js"></script>
+    <script src="sidepanel.js"></script>
+</body>
+
+</html>

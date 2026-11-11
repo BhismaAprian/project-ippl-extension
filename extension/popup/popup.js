@@ -15,6 +15,15 @@ const els = {
     loadingState: document.getElementById('loadingState'),
     errorState: document.getElementById('errorState'),
     originalProduct: document.getElementById('originalProduct'),
+    reviewSummarySection: document.getElementById('reviewSummarySection'),
+    reviewConfidenceBadge: document.getElementById('reviewConfidenceBadge'),
+    reviewLoadingIndicator: document.getElementById('reviewLoadingIndicator'),
+    reviewEmptyMessage: document.getElementById('reviewEmptyMessage'),
+    reviewRisksContainer: document.getElementById('reviewRisksContainer'),
+    reviewRisksList: document.getElementById('reviewRisksList'),
+    reviewProsConsGrid: document.getElementById('reviewProsConsGrid'),
+    reviewProsList: document.getElementById('reviewProsList'),
+    reviewConsList: document.getElementById('reviewConsList'),
     bestValueSection: document.getElementById('bestValueSection'),
     cheapestSection: document.getElementById('cheapestSection'),
     otherResultsSection: document.getElementById('otherResultsSection'),
@@ -36,11 +45,14 @@ function hide(el) { if (el) el.classList.add('hidden'); }
 
 function hideResultSections() {
     hide(els.originalProduct);
+    hide(els.reviewSummarySection);
     hide(els.bestValueSection);
     hide(els.cheapestSection);
     hide(els.otherResultsSection);
     hide(els.errorState);
 }
+
+let isProcessing = false;
 
 function showLoading(text) {
     els.loadingState.textContent = text || 'Menganalisis...';
@@ -51,12 +63,44 @@ function hideLoading() {
     hide(els.loadingState);
 }
 
+function setLoadingState(isLoading, message) {
+    isProcessing = isLoading;
+    if (els.reanalyzeBtn) {
+        els.reanalyzeBtn.disabled = isLoading;
+        if (isLoading) {
+            els.reanalyzeBtn.classList.add('btn-disabled');
+        } else {
+            els.reanalyzeBtn.classList.remove('btn-disabled');
+        }
+    }
+    if (els.saveKeysBtn) {
+        els.saveKeysBtn.disabled = isLoading;
+    }
+
+    if (isLoading) {
+        showLoading(message || 'Menganalisis...');
+    } else {
+        hideLoading();
+    }
+}
+
 function showError(message) {
     console.log('[Shopping Intelligence] ERROR:', message);
-    hideLoading();
+    setLoadingState(false);
     hideResultSections();
     els.errorState.textContent = message;
     show(els.errorState);
+}
+
+function isSupportedMarketplaceUrl(url) {
+    if (!url) return false;
+    try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase();
+        return host.includes('shopee.co.id') || host.includes('tokopedia.com') || host.includes('lazada.co.id');
+    } catch (e) {
+        return false;
+    }
 }
 
 function sendMessage(tabId, message) {
@@ -123,9 +167,14 @@ function formatPrice(price, currency) {
 }
 
 function isCheaper(price, originalPrice) {
-    return price !== null && price !== undefined
-        && originalPrice !== null && originalPrice !== undefined
-        && price < originalPrice;
+    if (price === null || price === undefined || originalPrice === null || originalPrice === undefined) {
+        return false;
+    }
+    const candPrice = Number(price);
+    const origPrice = Number(originalPrice);
+    if (isNaN(candPrice) || isNaN(origPrice)) return false;
+    // Hanya anggap lebih murah jika harga masuk akal (> Rp 1.000) dan benar-benar di bawah harga asli
+    return candPrice >= 1000 && candPrice < origPrice;
 }
 
 function marketClass(mark) {
@@ -268,6 +317,92 @@ function renderOriginalProduct(product, marketplace) {
     show(els.originalProduct);
 }
 
+function renderReviewSummary(reviewData) {
+    if (!reviewData) {
+        hide(els.reviewSummarySection);
+        return;
+    }
+
+    hide(els.reviewLoadingIndicator);
+    show(els.reviewSummarySection);
+
+    if (reviewData.status === 'NO_REVIEWS' || (!reviewData.pros?.length && !reviewData.cons?.length && !reviewData.risks?.length)) {
+        show(els.reviewEmptyMessage);
+        hide(els.reviewRisksContainer);
+        hide(els.reviewProsConsGrid);
+        if (els.reviewConfidenceBadge) {
+            els.reviewConfidenceBadge.className = 'status-badge gray';
+            els.reviewConfidenceBadge.textContent = 'Tanpa Ulasan';
+        }
+        return;
+    }
+
+    hide(els.reviewEmptyMessage);
+
+    // Confidence Badge
+    if (els.reviewConfidenceBadge) {
+        const conf = (reviewData.confidence || 'LOW').toUpperCase();
+        if (conf === 'HIGH') {
+            els.reviewConfidenceBadge.className = 'status-badge green';
+            els.reviewConfidenceBadge.textContent = 'Akurasi Tinggi ✅';
+        } else if (conf === 'MEDIUM') {
+            els.reviewConfidenceBadge.className = 'status-badge yellow';
+            els.reviewConfidenceBadge.textContent = 'Akurasi Cukup ⚠️';
+        } else {
+            els.reviewConfidenceBadge.className = 'status-badge gray';
+            els.reviewConfidenceBadge.textContent = 'Sampel Terbatas ❓';
+        }
+    }
+
+    // Risks / Red Flags
+    const risks = Array.isArray(reviewData.risks) ? reviewData.risks : [];
+    const cleanRisks = risks.filter(r => r && !r.toLowerCase().includes('tidak ditemukan resiko'));
+
+    if (cleanRisks.length > 0) {
+        els.reviewRisksList.innerHTML = '';
+        cleanRisks.forEach(risk => {
+            const li = document.createElement('li');
+            li.textContent = risk;
+            els.reviewRisksList.appendChild(li);
+        });
+        show(els.reviewRisksContainer);
+    } else {
+        hide(els.reviewRisksContainer);
+    }
+
+    // Pros
+    els.reviewProsList.innerHTML = '';
+    const pros = Array.isArray(reviewData.pros) ? reviewData.pros : [];
+    if (pros.length > 0) {
+        pros.forEach(pro => {
+            const li = document.createElement('li');
+            li.textContent = pro;
+            els.reviewProsList.appendChild(li);
+        });
+    } else {
+        const li = document.createElement('li');
+        li.textContent = 'Tidak ada poin kelebihan spesifik.';
+        els.reviewProsList.appendChild(li);
+    }
+
+    // Cons
+    els.reviewConsList.innerHTML = '';
+    const cons = Array.isArray(reviewData.cons) ? reviewData.cons : [];
+    if (cons.length > 0) {
+        cons.forEach(con => {
+            const li = document.createElement('li');
+            li.textContent = con;
+            els.reviewConsList.appendChild(li);
+        });
+    } else {
+        const li = document.createElement('li');
+        li.textContent = 'Tidak ada poin kekurangan spesifik.';
+        els.reviewConsList.appendChild(li);
+    }
+
+    show(els.reviewProsConsGrid);
+}
+
 function renderHighlight(sectionEl, titleText, candidate, reason, kind, originalPrice) {
     sectionEl.innerHTML = '';
     sectionEl.classList.add('card');
@@ -303,9 +438,10 @@ function renderAll(data) {
     const evaluation = data.evaluation || null;
 
     renderOriginalProduct(product, marketplace);
+    renderReviewSummary(data.reviewSummary);
 
     if (candidates.length === 0) {
-        showError('Tidak ada produk alternatif yang ditemukan di Google');
+        showError('Tidak ada alternatif produk yang cocok ditemukan.');
         return;
     }
 
@@ -324,23 +460,45 @@ function renderAll(data) {
             }, null)
             || candidates[0];
 
+        // Sinkronisasi status spesifikasi dan harga dari AI
+        if (bestCandidate) {
+            bestCandidate.specStatus = bestEntry.spec_status || bestCandidate.specStatus || 'EXACT';
+            if (bestEntry.price && (!bestCandidate.price || bestCandidate.price < 1000)) {
+                bestCandidate.price = bestEntry.price;
+            }
+        }
+        if (cheapestCandidate) {
+            cheapestCandidate.specStatus = cheapestEntry.spec_status || cheapestCandidate.specStatus || 'UNKNOWN';
+            if (cheapestEntry.price && (!cheapestCandidate.price || cheapestCandidate.price < 1000)) {
+                cheapestCandidate.price = cheapestEntry.price;
+            }
+        }
+
         renderHighlight(els.bestValueSection, '🏆 Best Value', bestCandidate, bestEntry.reason, 'best', originalPrice);
         renderHighlight(els.cheapestSection, '💰 Cheapest Option', cheapestCandidate, cheapestEntry.reason, 'cheapest', originalPrice);
 
         const usedUrls = new Set([bestCandidate.url, cheapestCandidate.url]);
-        const others = candidates.filter((c) => !usedUrls.has(c.url));
+        const otherResults = candidates.filter((c) => !usedUrls.has(c.url));
         const otherReasons = Array.isArray(evaluation.others) ? evaluation.others : [];
+
+        console.log("[UI] Rendering alternatives:", otherResults.length);
 
         els.otherResultsSection.innerHTML = '';
         els.otherResultsSection.classList.add('card');
-        if (others.length > 0) {
+        if (otherResults.length > 0) {
             const title = document.createElement('h2');
             title.className = 'section-title';
-            title.textContent = '📋 Alternatif Lainnya';
+            title.textContent = `📋 Menampilkan ${otherResults.length} Alternatif Lainnya`;
             els.otherResultsSection.appendChild(title);
 
-            others.forEach((candidate) => {
+            otherResults.forEach((candidate) => {
                 const match = otherReasons.find((o) => o && o.url === candidate.url);
+                if (match) {
+                    if (match.spec_status) candidate.specStatus = match.spec_status;
+                    if (match.price && (!candidate.price || candidate.price < 1000)) {
+                        candidate.price = match.price;
+                    }
+                }
                 els.otherResultsSection.appendChild(
                     buildResultCard(candidate, match ? match.reason : null, 'other', originalPrice)
                 );
@@ -364,21 +522,24 @@ function renderAll(data) {
         notice.textContent = 'Rekomendasi AI tidak tersedia, ini hasil teratas dari Google';
         els.bestValueSection.appendChild(notice);
 
-        candidates.slice(0, 3).forEach((candidate) => {
+        const topPicks = candidates.slice(0, 2);
+        topPicks.forEach((candidate) => {
             els.bestValueSection.appendChild(buildResultCard(candidate, null, 'best', originalPrice));
         });
         show(els.bestValueSection);
         hide(els.cheapestSection);
 
+        const otherResults = candidates.slice(2);
+        console.log("[UI] Rendering alternatives:", otherResults.length);
+
         els.otherResultsSection.innerHTML = '';
         els.otherResultsSection.classList.add('card');
-        const others = candidates.slice(3);
-        if (others.length > 0) {
+        if (otherResults.length > 0) {
             const otitle = document.createElement('h2');
             otitle.className = 'section-title';
-            otitle.textContent = '📋 Alternatif Lainnya';
+            otitle.textContent = `📋 Menampilkan ${otherResults.length} Alternatif Lainnya`;
             els.otherResultsSection.appendChild(otitle);
-            others.forEach((candidate) => {
+            otherResults.forEach((candidate) => {
                 els.otherResultsSection.appendChild(buildResultCard(candidate, null, 'other', originalPrice));
             });
             show(els.otherResultsSection);
@@ -390,12 +551,36 @@ function renderAll(data) {
 
 // === Analisis (API) ===
 async function analyze(tab) {
+    // 1. Cek koneksi internet
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('Koneksi internet terputus. Pastikan WiFi atau paket data Anda aktif.');
+    }
+
+    // 2. Validasi URL tab aktif sebelum mengirim pesan ke content script
+    const url = (tab && tab.url) || '';
+    if (!url || url.startsWith('chrome://') || url.startsWith('edge://') || url.startsWith('about:') || url.startsWith('chrome-extension://')) {
+        throw new Error('Ekstensi tidak dapat berjalan di halaman internal browser.');
+    }
+
+    if (!isSupportedMarketplaceUrl(url)) {
+        throw new Error('Marketplace ini belum didukung. Buka halaman produk di Shopee, Tokopedia, atau Lazada.');
+    }
+
     console.log('[Shopping Intelligence] DETECT_PAGE');
-    const detection = await sendMessage(tab.id, { action: 'DETECT_PAGE' });
-    const marketplace = (detection && detection.marketplace) || 'Shopee';
+    let detection = null;
+    try {
+        detection = await sendMessage(tab.id, { action: 'DETECT_PAGE' });
+    } catch (e) {
+        if (e && e.message && e.message.includes('Receiving end does not exist')) {
+            throw new Error('Gagal berkomunikasi dengan halaman. Silakan refresh tab belanja Anda.');
+        }
+        throw e;
+    }
+
+    const marketplace = (detection && detection.marketplace) || 'Marketplace';
 
     if (detection && detection.isProduct === false) {
-        throw new Error(detection.reason || 'Halaman ini bukan halaman produk.');
+        throw new Error(detection.reason || `Halaman ini bukan halaman produk ${marketplace}.`);
     }
 
     console.log('[Shopping Intelligence] EXTRACT_PRODUCT');
@@ -404,60 +589,146 @@ async function analyze(tab) {
         extraction = await sendMessage(tab.id, { action: 'EXTRACT_PRODUCT' });
     } catch (e) {
         console.error('[Shopping Intelligence] EXTRACT_PRODUCT error:', e);
+        throw new Error(e && e.message ? e.message : `Gagal membaca halaman ${marketplace}.`);
     }
+
     if (!extraction || !extraction.success || !extraction.product) {
-        throw new Error('Gagal membaca halaman Shopee');
+        const errDetail = (extraction && extraction.error) ? extraction.error : `Gagal membaca informasi produk dari ${marketplace}.`;
+        throw new Error(errDetail);
     }
     const product = extraction.product;
     console.log('[Shopping Intelligence] product:', product);
 
-    console.log('[Shopping Intelligence] UNDERSTAND_PRODUCT');
-    let aiData = null;
-    try {
-        const r = await sendMessage(tab.id, { action: 'UNDERSTAND_PRODUCT', product });
-        if (r && r.success === false && /API Key/i.test(r.error || '')) {
-            throw new Error(r.error);
+    // Render produk asli segera
+    renderOriginalProduct(product, marketplace);
+
+    // Tampilkan skeleton/loading Review Intelligence
+    show(els.reviewSummarySection);
+    show(els.reviewLoadingIndicator);
+    hide(els.reviewEmptyMessage);
+    hide(els.reviewRisksContainer);
+    hide(els.reviewProsConsGrid);
+    if (els.reviewConfidenceBadge) {
+        els.reviewConfidenceBadge.className = 'status-badge gray';
+        els.reviewConfidenceBadge.textContent = 'Menganalisis...';
+    }
+
+    // Branch A: Review Intelligence (Paralel & Non-blocking)
+    const reviewPromise = (async () => {
+        try {
+            console.log('[Shopping Intelligence] EXTRACT_REVIEWS');
+            const reviewRes = await sendMessage(tab.id, { action: 'EXTRACT_REVIEWS' });
+            const reviews = (reviewRes && Array.isArray(reviewRes.reviews)) ? reviewRes.reviews : [];
+            console.log('[Shopping Intelligence] reviews extracted:', reviews.length);
+
+            if (reviews.length === 0) {
+                const emptyData = {
+                    status: 'NO_REVIEWS',
+                    pros: [],
+                    cons: [],
+                    risks: [],
+                    confidence: 'LOW',
+                    message: 'Belum ada ulasan pembeli yang dapat dianalisis untuk produk ini.'
+                };
+                renderReviewSummary(emptyData);
+                return emptyData;
+            }
+
+            let summary = null;
+            try {
+                const ai = new window.AIClient();
+                summary = await ai.summarizeReviews(product.title, reviews);
+            } catch (aiErr) {
+                console.warn('[Shopping Intelligence] Groq summarizeReviews gagal:', aiErr);
+                summary = null;
+            }
+
+            if (!summary || summary.status !== 'SUCCESS') {
+                const fallbackData = {
+                    status: 'FALLBACK_RAW',
+                    rawReviews: reviews,
+                    pros: reviews.slice(0, 3).map(r => ({ text: typeof r === 'string' ? r : r.text })),
+                    cons: [],
+                    risks: [],
+                    confidence: 'LOW',
+                    message: 'AI gagal merangkum, tetapi berikut adalah ulasan asli dari pembeli:'
+                };
+                renderReviewSummary(fallbackData);
+                return fallbackData;
+            }
+
+            renderReviewSummary(summary);
+            return summary;
+        } catch (err) {
+            console.error('[Shopping Intelligence] Review Intelligence error:', err);
+            hide(els.reviewLoadingIndicator);
+            show(els.reviewEmptyMessage);
+            els.reviewEmptyMessage.textContent = 'Ulasan belum tersedia atau gagal dianalisis.';
+            return null;
         }
-        aiData = r ? r.aiData : null;
-    } catch (e) {
-        console.error('[Shopping Intelligence] UNDERSTAND_PRODUCT error:', e);
-        if (/API Key/i.test(e && e.message)) throw e;
-    }
-    console.log('[Shopping Intelligence] aiData:', aiData);
+    })();
 
-    console.log('[Shopping Intelligence] SEARCH_ALTERNATIVES');
-    let searchResults = [];
-    try {
-        const searchClient = new window.SearchClient();
-        searchResults = await searchClient.searchAlternatives(product, aiData);
-    } catch (e) {
-        console.error('[Shopping Intelligence] SEARCH_ALTERNATIVES error:', e);
-        if (/API Key/i.test(e && e.message)) throw e;
-    }
-    console.log("[Shopping Intelligence] searchResults:", searchResults.length);
-    if (searchResults.length === 0) {
-        throw new Error('Tidak ada produk alternatif yang ditemukan di Google');
-    }
-
-    console.log('[Shopping Intelligence] EVALUATE_DEALS');
-    let evaluation = null;
-    try {
-        const r = await sendMessage(tab.id, {
-            action: 'EVALUATE_DEALS',
-            product,
-            candidates: searchResults
-        });
-        if (r && r.success === false && /API Key/i.test(r.error || '')) {
-            throw new Error(r.error);
+    // Branch B: Timbangan Harga (Deal Engine)
+    const dealsPromise = (async () => {
+        console.log('[Shopping Intelligence] UNDERSTAND_PRODUCT');
+        let aiData = null;
+        try {
+            const r = await sendMessage(tab.id, { action: 'UNDERSTAND_PRODUCT', product });
+            if (r && r.success === false && /API Key/i.test(r.error || '')) {
+                throw new Error(r.error);
+            }
+            aiData = r ? r.aiData : null;
+        } catch (e) {
+            console.error('[Shopping Intelligence] UNDERSTAND_PRODUCT error:', e);
+            if (/API Key|Koneksi|internet/i.test(e && e.message)) throw e;
         }
-        evaluation = r ? r.evaluation : null;
-    } catch (e) {
-        console.error('[Shopping Intelligence] EVALUATE_DEALS error:', e);
-        if (/API Key/i.test(e && e.message)) throw e;
-    }
-    console.log('[Shopping Intelligence] evaluation:', evaluation);
+        console.log('[Shopping Intelligence] aiData:', aiData);
 
-    return { marketplace, product, aiData, searchResults, evaluation };
+        console.log('[Shopping Intelligence] SEARCH_ALTERNATIVES');
+        let searchResults = [];
+        try {
+            const searchClient = new window.SearchClient();
+            searchResults = await searchClient.searchAlternatives(product, aiData);
+        } catch (e) {
+            console.error('[Shopping Intelligence] SEARCH_ALTERNATIVES error:', e);
+            throw e;
+        }
+        console.log("[Shopping Intelligence] searchResults:", searchResults.length);
+        if (searchResults.length === 0) {
+            throw new Error('Tidak ada alternatif produk yang cocok ditemukan.');
+        }
+
+        console.log('[Shopping Intelligence] EVALUATE_DEALS');
+        let evaluation = null;
+        try {
+            const r = await sendMessage(tab.id, {
+                action: 'EVALUATE_DEALS',
+                product,
+                candidates: searchResults
+            });
+            if (r && r.success === false && /API Key/i.test(r.error || '')) {
+                throw new Error(r.error);
+            }
+            evaluation = r ? r.evaluation : null;
+        } catch (e) {
+            console.error('[Shopping Intelligence] EVALUATE_DEALS error:', e);
+            if (/API Key|Koneksi|internet/i.test(e && e.message)) throw e;
+        }
+        console.log('[Shopping Intelligence] evaluation:', evaluation);
+
+        return { aiData, searchResults, evaluation };
+    })();
+
+    const [reviewSettled, dealsSettled] = await Promise.allSettled([reviewPromise, dealsPromise]);
+
+    if (dealsSettled.status === 'rejected') {
+        throw dealsSettled.reason;
+    }
+
+    const reviewSummary = reviewSettled.status === 'fulfilled' ? reviewSettled.value : null;
+    const { aiData, searchResults, evaluation } = dealsSettled.value;
+
+    return { marketplace, product, reviewSummary, aiData, searchResults, evaluation };
 }
 
 // === Cache + init ===
@@ -478,7 +749,8 @@ async function analyzeAndCache(tab) {
 }
 
 async function init() {
-    showLoading('Menganalisis...');
+    if (isProcessing) return;
+    setLoadingState(true, 'Menganalisis halaman...');
     hideResultSections();
 
     try {
@@ -505,12 +777,17 @@ async function init() {
         await analyzeAndCache(tab);
     } catch (error) {
         console.error('[Shopping Intelligence] init error:', error);
-        showError('Terjadi kesalahan tak terduga.');
+        showError(error && error.message ? error.message : 'Terjadi kesalahan tak terduga.');
+    } finally {
+        setLoadingState(false);
     }
 }
 
 async function onReanalyze() {
-    els.reanalyzeBtn.disabled = true;
+    if (isProcessing) return;
+    setLoadingState(true, 'Menganalisis ulang...');
+    hideResultSections();
+
     try {
         const tab = await getActiveTab();
         if (!tab || !tab.id) {
@@ -523,14 +800,12 @@ async function onReanalyze() {
         } catch (e) {
             console.error('[Shopping Intelligence] gagal hapus cache:', e);
         }
-        showLoading('Menganalisis ulang...');
-        hideResultSections();
         await analyzeAndCache(tab);
     } catch (error) {
         console.error('[Shopping Intelligence] onReanalyze error:', error);
-        showError('Terjadi kesalahan tak terduga.');
+        showError(error && error.message ? error.message : 'Terjadi kesalahan tak terduga.');
     } finally {
-        els.reanalyzeBtn.disabled = false;
+        setLoadingState(false);
     }
 }
 

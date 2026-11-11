@@ -1,34 +1,46 @@
 {
     "manifest_version": 3,
     "name": "Shopping Intelligence",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Sebelum checkout, cek dulu — hemat duit, nggak nyesel.",
     "permissions": [
         "activeTab",
+        "tabs",
         "storage",
-        "scripting"
+        "scripting",
+        "sidePanel"
     ],
     "host_permissions": [
+        "https://*.shopee.co.id/*",
         "https://shopee.co.id/*",
-        "https://www.tokopedia.com/*",
-        "https://www.lazada.co.id/*",
-        "https://api.exa.ai/*"
+        "https://shopee.co.id/search*",
+        "https://*.tokopedia.com/*",
+        "https://tokopedia.com/*",
+        "https://*.lazada.co.id/*",
+        "https://lazada.co.id/*",
+        "https://api.exa.ai/*",
+        "https://api.groq.com/*"
     ],
     "action": {
-        "default_popup": "popup/popup.html",
         "default_icon": {
             "16": "icons/icon16.png",
             "48": "icons/icon48.png",
             "128": "icons/icon128.png"
         },
-        "default_title": "Shopping Intelligence"
+        "default_title": "Shopping Intelligence Companion"
+    },
+    "side_panel": {
+        "default_path": "sidepanel/sidepanel.html"
     },
     "content_scripts": [
         {
             "matches": [
+                "https://*.shopee.co.id/*",
                 "https://shopee.co.id/*",
-                "https://www.tokopedia.com/*",
-                "https://www.lazada.co.id/*"
+                "https://*.tokopedia.com/*",
+                "https://tokopedia.com/*",
+                "https://*.lazada.co.id/*",
+                "https://lazada.co.id/*"
             ],
             "js": [
                 "shared/constant.js",
@@ -38,6 +50,16 @@
                 "adapters/lazada-adapter.js",
                 "shared/ai-client.js",
                 "content/marketplace-detector.js"
+            ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://shopee.co.id/search*",
+                "https://*.shopee.co.id/search*"
+            ],
+            "js": [
+                "content/native-search-parser.js"
             ],
             "run_at": "document_idle"
         }

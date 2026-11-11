@@ -5,7 +5,7 @@
  */
 
 window.APP_NAME = 'Shopping Intelligence';
-window.APP_VERSION = '0.1.0';
+window.APP_VERSION = '0.2.0';
 
 window.MESSAGES = {
     NOT_PRODUCT_PAGE: 'Halaman ini bukan halaman produk MARKETPLACE',
