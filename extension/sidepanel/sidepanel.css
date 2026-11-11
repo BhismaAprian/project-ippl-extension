@@ -1277,6 +1277,60 @@ h4,
     color: #059669;
 }
 
+/* Section 6: Native Alternatives */
+.card-alternatives {
+    background: #FFFFFF;
+    border: 2px solid var(--fg-slate);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 4px 4px 0px var(--fg-slate);
+    margin-bottom: 16px;
+}
+
+.alternatives-btn-group .btn-action {
+    flex: 1;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 2px solid var(--fg-slate);
+    box-shadow: 2px 2px 0px var(--fg-slate);
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.alternatives-btn-group .btn-action:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0px var(--fg-slate);
+}
+
+.alternatives-btn-group .btn-action:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0px var(--fg-slate);
+}
+
+.native-results-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.native-candidate-card {
+    background: #F8FAFC;
+    border: 1.5px solid var(--fg-slate);
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: 2px 2px 0px var(--fg-slate);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.native-candidate-card:hover {
+    background: #FFFFFF;
+}
+
 /* Utility */
 .hidden {
     display: none !important;

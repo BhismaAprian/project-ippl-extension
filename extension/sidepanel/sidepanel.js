@@ -76,7 +76,16 @@ const els = {
     inputGroqKey: document.getElementById('inputGroqKey'),
     inputExaKey: document.getElementById('inputExaKey'),
     saveKeysBtn: document.getElementById('saveKeysBtn'),
-    keyStatus: document.getElementById('keyStatus')
+    keyStatus: document.getElementById('keyStatus'),
+
+    // Section 6: Native Alternatives
+    nativeSearchBtn: document.getElementById('native-search-btn'),
+    exaSearchBtn: document.getElementById('exa-search-btn'),
+    searchProgress: document.getElementById('search-progress'),
+    searchProgressText: document.getElementById('search-progress-text'),
+    searchBlocked: document.getElementById('search-blocked'),
+    manualOpenLink: document.getElementById('manual-open-link'),
+    searchResults: document.getElementById('search-results')
 };
 
 // Versi Manifest
@@ -84,9 +93,10 @@ try {
     if (els.version) els.version.textContent = 'v' + chrome.runtime.getManifest().version;
 } catch (e) { }
 
-// State Mutex Flag
+// State Mutex Flag & Cached Analysis Data
 let isProcessing = false;
 let currentActiveTabId = null;
+let currentAnalysisData = null;
 
 // === State Helpers ===
 function show(el) {
@@ -963,6 +973,7 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
  */
 function renderAll(data, tabId) {
     if (!data) return;
+    currentAnalysisData = data;
     const { marketplace, product, reviewSummary, evaluation, searchResults, ultimateDeal } = data;
 
     renderOriginalProduct(product, marketplace);
@@ -1302,6 +1313,12 @@ async function init() {
     if (els.saveKeysBtn) {
         els.saveKeysBtn.addEventListener('click', saveKeys);
     }
+    if (els.nativeSearchBtn) {
+        els.nativeSearchBtn.addEventListener('click', onNativeSearchClick);
+    }
+    if (els.exaSearchBtn) {
+        els.exaSearchBtn.addEventListener('click', onExaSearchClick);
+    }
 
     const tab = await getActiveTab();
     if (!tab) {
@@ -1324,3 +1341,218 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// =========================================================================
+// SECTION 6: NATIVE SEARCH PROTOCOL ORCHESTRATION (PHASE 3)
+// =========================================================================
+
+function renderNativeCandidates(candidates = []) {
+    if (!els.searchResults) return;
+    els.searchResults.innerHTML = '';
+
+    if (!candidates || candidates.length === 0) {
+        els.searchResults.innerHTML = `
+            <div style="font-size: 0.8rem; color: #64748B; padding: 8px 0;">
+                Tidak ada kandidat produk yang lolos validasi dari Shopee.
+            </div>
+        `;
+        return;
+    }
+
+    candidates.forEach(cand => {
+        const item = document.createElement('div');
+        item.className = 'native-candidate-card';
+        const formattedPrice = cand.price ? formatPrice(cand.price) : 'Harga tidak tersedia';
+        const ratingBadge = cand.rating ? `⭐ ${cand.rating.toFixed(1)}` : '';
+        const soldText = cand.sold ? `· ${cand.sold} terjual` : '';
+        const locText = cand.location ? `📍 ${cand.location}` : '';
+
+        item.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                <span class="badge-marketplace badge-shopee" style="font-size: 0.65rem;">🟠 Shopee Native</span>
+                <span style="font-size: 0.7rem; color: #64748B; font-weight: 600;">${locText}</span>
+            </div>
+            <div style="font-size: 0.8rem; font-weight: 700; color: var(--fg-slate); line-height: 1.3;">
+                ${cand.title}
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+                <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: #EE4D2D;">
+                    ${formattedPrice}
+                </span>
+                <span style="font-size: 0.72rem; color: #475569; font-weight: 600;">
+                    ${ratingBadge} ${soldText}
+                </span>
+            </div>
+            <a href="${cand.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.74rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 2px;">
+                Buka di Shopee ↗
+            </a>
+        `;
+        els.searchResults.appendChild(item);
+    });
+}
+
+async function onNativeSearchClick() {
+    if (!currentAnalysisData || !currentAnalysisData.product) {
+        alert('Harap tunggu analisis produk selesai sebelum mencari alternatif.');
+        return;
+    }
+
+    const product = currentAnalysisData.product;
+    const aiData = currentAnalysisData.aiData || null;
+
+    // 1. Cek Rate Limiting (Maks 1x per 2 menit per user per marketplace)
+    const now = Date.now();
+    const rateLimitKey = 'rate_limit_shopee_native';
+    const lastSearch = (await chrome.storage.local.get([rateLimitKey]))?.[rateLimitKey] || 0;
+    const elapsed = now - lastSearch;
+
+    if (elapsed < 120000) {
+        const remainingSec = Math.ceil((120000 - elapsed) / 1000);
+        alert(`Harap tunggu ${remainingSec} detik lagi sebelum memicu pencarian native Shopee berikutnya.`);
+        return;
+    }
+
+    // 2. Cek Cache 30 Menit: (fingerprint, marketplace)
+    const brand = aiData?.brand || product.brand || 'unknown';
+    const model = aiData?.model || product.model || '';
+    const cacheKey = `native_cache_${brand}_${model}_shopee`.replace(/\s+/g, '_').toLowerCase();
+
+    const cachedData = (await chrome.storage.local.get([cacheKey]))?.[cacheKey];
+    if (cachedData && cachedData.candidates && (now - cachedData.timestamp < 1800000)) {
+        console.log('[Shopping Intelligence] Native Search Cache Hit (<30 menit):', cacheKey);
+        hide(els.searchBlocked);
+        hide(els.searchProgress);
+        renderNativeCandidates(cachedData.candidates);
+        return;
+    }
+
+    // 3. Tampilkan UI Progress
+    show(els.searchProgress);
+    hide(els.searchBlocked);
+    if (els.searchProgressText) {
+        els.searchProgressText.textContent = 'Membuka pencarian Shopee sebentar. Jangan tutup tab ini...';
+    }
+    if (els.searchResults) {
+        els.searchResults.innerHTML = '';
+    }
+
+    try {
+        const manifest = window.shopeeManifest;
+        const provider = new window.ShopeeNativeProvider(manifest);
+
+        const candidates = await provider.search(product, {
+            fingerprint: aiData,
+            timeout: 15000
+        });
+
+        // Simpan Cache 30 menit & Perbarui Rate Limit
+        await chrome.storage.local.set({
+            [cacheKey]: { candidates: candidates, timestamp: now },
+            [rateLimitKey]: now
+        });
+
+        hide(els.searchProgress);
+        renderNativeCandidates(candidates);
+
+    } catch (err) {
+        hide(els.searchProgress);
+        console.warn('[Shopping Intelligence] Native search error:', err);
+
+        if (err.status === 'BLOCKED') {
+            show(els.searchBlocked);
+            if (els.manualOpenLink) {
+                const queryText = (aiData?.search_query || product.title || '').trim();
+                els.manualOpenLink.href = `https://shopee.co.id/search?keyword=${encodeURIComponent(queryText)}`;
+            }
+        } else if (err.status === 'CANCELLED_BY_USER') {
+            if (els.searchResults) {
+                els.searchResults.innerHTML = `
+                    <div style="font-size: 0.8rem; color: #EA580C; background: #FFF7ED; border: 1.5px solid #FDBA74; border-radius: 8px; padding: 8px;">
+                        ⚠️ Tab Shopee ditutup sebelum selesai membaca hasil. Tekan tombol lagi jika ingin mencari ulang.
+                    </div>
+                `;
+            }
+        } else if (err.status === 'TIMEOUT') {
+            if (els.searchResults) {
+                els.searchResults.innerHTML = `
+                    <div style="font-size: 0.8rem; color: #64748B; background: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 8px;">
+                        ⏱️ Halaman Shopee membutuhkan waktu hidrasi lebih lama dari biasanya. Coba cari ulang atau gunakan tombol Exa di bawah.
+                    </div>
+                `;
+            }
+        } else {
+            if (els.searchResults) {
+                els.searchResults.innerHTML = `
+                    <div style="font-size: 0.8rem; color: #DC2626; background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 8px; padding: 8px;">
+                        ❌ Terjadi kesalahan: ${err.message}
+                    </div>
+                `;
+            }
+        }
+    }
+}
+
+async function onExaSearchClick() {
+    if (!currentAnalysisData || !currentAnalysisData.product) {
+        alert('Harap tunggu analisis produk selesai sebelum mencari alternatif.');
+        return;
+    }
+
+    const product = currentAnalysisData.product;
+    const aiData = currentAnalysisData.aiData || null;
+
+    show(els.searchProgress);
+    hide(els.searchBlocked);
+    if (els.searchProgressText) {
+        els.searchProgressText.textContent = 'Mencari alternatif melalui Exa Neural Search...';
+    }
+
+    try {
+        const { exaKey } = await chrome.storage.local.get(['exaKey']);
+        const exaProvider = new window.ExaProvider({ apiKey: exaKey });
+
+        const rawResults = await exaProvider.search(product, {
+            aiData: aiData,
+            rawProduct: product
+        });
+
+        const normalized = rawResults.map(r => {
+            return window.CandidateNormalizer.normalizeCandidate(r, r.marketplace, 'exa-fallback');
+        }).filter(Boolean);
+
+        hide(els.searchProgress);
+        renderNativeCandidates(normalized);
+
+    } catch (err) {
+        hide(els.searchProgress);
+        if (els.searchResults) {
+            els.searchResults.innerHTML = `
+                <div style="font-size: 0.8rem; color: #DC2626; background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 8px; padding: 8px;">
+                    ❌ Pencarian Exa gagal: ${err.message}
+                </div>
+            `;
+        }
+    }
+}
+
+// Runtime Message Listener untuk Progress Updates
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message.action === 'SEARCH_PROGRESS') {
+            if (els.searchProgressText) {
+                if (message.current && message.total) {
+                    els.searchProgressText.textContent = `${message.message} (${message.current}/${message.total})`;
+                } else {
+                    els.searchProgressText.textContent = message.message;
+                }
+            }
+        }
+    });
+}
+
+// Auto-cancel on Sidepanel Unload / Close
+window.addEventListener('pagehide', () => {
+    try {
+        chrome.runtime.sendMessage({ action: 'CANCEL_NATIVE_SEARCH', reason: 'sidepanel_closed' });
+    } catch (e) { }
+});

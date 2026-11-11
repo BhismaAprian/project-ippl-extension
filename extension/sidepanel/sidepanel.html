@@ -226,7 +226,49 @@
             <div id="similarRecsList" class="similar-grid"></div>
         </section>
 
-        <!-- Section 5: Settings Accordion -->
+        <!-- Section 6: Native Alternative Search (Brief Active Window) -->
+        <section id="alternatives-section" class="card card-alternatives">
+            <div class="section-title-wrap">
+                <div class="section-title-group">
+                    <h2 class="section-title font-heading">🔍 Cari Alternatif Harga</h2>
+                    <div class="section-subtitle">Pencarian native marketplace (visible-tab) &amp; Exa fallback</div>
+                </div>
+            </div>
+
+            <div class="alternatives-btn-group" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                <button id="native-search-btn" type="button" class="btn btn-action" style="background: #EE4D2D; color: #fff;">
+                    🟠 Cari Alternatif (Shopee Native)
+                </button>
+                <button id="exa-search-btn" type="button" class="btn btn-action" style="background: #6366F1; color: #fff;">
+                    🟣 Cari via Exa (Cadangan)
+                </button>
+            </div>
+
+            <!-- Progress Box -->
+            <div id="search-progress" class="subloading-box hidden">
+                <span class="spinner-dot"></span>
+                <span id="search-progress-text">Mempersiapkan pencarian...</span>
+            </div>
+
+            <!-- Blocked / Security Warning Box -->
+            <div id="search-blocked" class="risk-alert-box hidden" style="margin-bottom: 12px;">
+                <div class="risk-header">
+                    <span class="risk-icon">🛡️</span>
+                    <span class="risk-label font-heading">Verifikasi Keamanan Terdeteksi di Shopee</span>
+                </div>
+                <div style="font-size: 0.8rem; margin: 6px 0; color: #475569;">
+                    Shopee meminta verifikasi puzzle/captcha. Buka halaman secara manual atau gunakan Exa.
+                </div>
+                <a id="manual-open-link" target="_blank" rel="noopener noreferrer" class="btn btn-action" style="display: inline-block; padding: 4px 10px; font-size: 0.75rem; text-decoration: none; margin-top: 4px;">
+                    Buka Manual ↗
+                </a>
+            </div>
+
+            <!-- Results List -->
+            <div id="search-results" class="similar-grid"></div>
+        </section>
+
+        <!-- Section 7: Settings Accordion -->
         <section id="settingsSection" class="card settings">
             <details class="settings-accordion">
                 <summary class="settings-summary font-heading">
@@ -248,6 +290,15 @@
     <!-- Scripts -->
     <script src="../shared/constant.js"></script>
     <script src="../shared/ai-client.js"></script>
+    <script src="../shared/gatekeeper.js"></script>
+    <script src="../shared/base-search-provider.js"></script>
+    <script src="../shared/candidate-normalizer.js"></script>
+    <script src="../shared/pdp-url-classifier.js"></script>
+    <script src="../shared/query-builder.js"></script>
+    <script src="../shared/native-search-protocol.js"></script>
+    <script src="../manifest/marketplace-manifest/shopee.js"></script>
+    <script src="../shared/providers/shopee-native-provider.js"></script>
+    <script src="../shared/providers/exa-provider.js"></script>
     <script src="../shared/search-client.js"></script>
     <script src="sidepanel.js"></script>
 </body>
