@@ -5,6 +5,7 @@
     "description": "Sebelum checkout, cek dulu — hemat duit, nggak nyesel.",
     "permissions": [
         "activeTab",
+        "tabs",
         "storage",
         "scripting",
         "sidePanel"
@@ -12,6 +13,7 @@
     "host_permissions": [
         "https://*.shopee.co.id/*",
         "https://shopee.co.id/*",
+        "https://shopee.co.id/search*",
         "https://*.tokopedia.com/*",
         "https://tokopedia.com/*",
         "https://*.lazada.co.id/*",
@@ -48,6 +50,16 @@
                 "adapters/lazada-adapter.js",
                 "shared/ai-client.js",
                 "content/marketplace-detector.js"
+            ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://shopee.co.id/search*",
+                "https://*.shopee.co.id/search*"
+            ],
+            "js": [
+                "content/native-search-parser.js"
             ],
             "run_at": "document_idle"
         }
