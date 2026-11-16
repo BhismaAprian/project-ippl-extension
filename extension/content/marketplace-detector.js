@@ -5,12 +5,13 @@
     }
     window.__SI_MARKETPLACE_DETECTOR_LOADED__ = true;
 
-    // Cukup inisialisasi dari window object
+    // Inisialisasi adapter marketplace terdaftar
     const ADAPTERS = [
-        new window.ShopeeAdapter(),
-        new window.TokopediaAdapter(),
-        new window.LazadaAdapter()
-    ];
+        window.ShopeeAdapter ? new window.ShopeeAdapter() : null,
+        window.TokopediaAdapter ? new window.TokopediaAdapter() : null,
+        window.LazadaAdapter ? new window.LazadaAdapter() : null,
+        window.BlibliAdapter ? new window.BlibliAdapter() : null
+    ].filter(Boolean);
 
 function detectCurrentPage() {
     const currentUrl = window.location.href;
