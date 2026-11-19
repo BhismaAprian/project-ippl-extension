@@ -228,6 +228,42 @@ function extractCard(card, manifest) {
         price = Math.round(price / 100000);
     }
 
+    // Smart Fallback (CR-002 / ADR-09): Jika harga di kartu tidak ditemukan, cari dari <script type="application/ld+json"> di document
+    if (price === null && typeof document !== 'undefined') {
+        try {
+            const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+            for (const script of scripts) {
+                const text = script.textContent?.trim() || '';
+                if (!text) continue;
+                if (!text.includes(finalUrl) && (!title || !text.includes(title))) continue;
+                try {
+                    const parsedData = JSON.parse(text);
+                    const items = Array.isArray(parsedData)
+                        ? parsedData
+                        : (parsedData.itemListElement || [parsedData]);
+
+                    for (const item of items) {
+                        const prod = item.item || item;
+                        if (!prod) continue;
+                        const itemUrl = prod.url || '';
+                        const itemName = prod.name || '';
+                        if (itemUrl === finalUrl || (title && itemName && itemName.includes(title))) {
+                            const offer = Array.isArray(prod.offers) ? prod.offers[0] : prod.offers;
+                            if (offer && offer.price) {
+                                const pVal = Math.round(parseFloat(offer.price));
+                                if (!isNaN(pVal) && pVal > 0) {
+                                    price = pVal;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) { }
+                if (price !== null) break;
+            }
+        } catch (e) { }
+    }
+
     // 3. Ekstraksi Rating
     let rating = null;
     const ratingConfig = manifest.fields?.rating || {};

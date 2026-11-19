@@ -8,7 +8,7 @@
  */
 
 // Konfigurasi Chrome Side Panel agar terbuka saat action icon diklik
-if (chrome.sidePanel && typeof chrome.sidePanel.setPanelBehavior === 'function') {
+if (typeof chrome !== 'undefined' && chrome.sidePanel && typeof chrome.sidePanel.setPanelBehavior === 'function') {
     chrome.sidePanel
         .setPanelBehavior({ openPanelOnActionClick: true })
         .then(() => {
@@ -20,20 +20,22 @@ if (chrome.sidePanel && typeof chrome.sidePanel.setPanelBehavior === 'function')
 }
 
 // Inisialisasi saat instalasi / pembaruan ekstensi
-chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install') {
-        console.log('[Shopping Intelligence] Extension installed. Version: 0.2.0');
-        chrome.storage.local.set({
-            installedAt: new Date().toISOString(),
-            version: '0.2.0'
-        });
-    } else if (details.reason === 'update') {
-        console.log('[Shopping Intelligence] Extension updated to version 0.2.0');
-        chrome.storage.local.set({
-            version: '0.2.0'
-        });
-    }
-});
+if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled?.addListener) {
+    chrome.runtime.onInstalled.addListener((details) => {
+        if (details.reason === 'install') {
+            console.log('[Shopping Intelligence] Extension installed. Version: 0.2.0');
+            chrome.storage.local.set({
+                installedAt: new Date().toISOString(),
+                version: '0.2.0'
+            });
+        } else if (details.reason === 'update') {
+            console.log('[Shopping Intelligence] Extension updated to version 0.2.0');
+            chrome.storage.local.set({
+                version: '0.2.0'
+            });
+        }
+    });
+}
 
 // =========================================================================
 // Cleanup on Service Worker Wake: Tutup tab pencarian sisa jika sesi crash
@@ -94,24 +96,26 @@ async function isTabRegistered(tabId) {
 // =========================================================================
 // Listener Tab Removed: Deteksi jika user menutup tab pencarian secara manual
 // =========================================================================
-chrome.tabs.onRemoved.addListener(async (tabId) => {
-    const isOurTab = await isTabRegistered(tabId);
-    if (isOurTab) {
-        console.log('[Shopping Intelligence] Tab pencarian ditutup manual oleh pengguna:', tabId);
-        await unregisterActiveTab(tabId);
+if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved?.addListener) {
+    chrome.tabs.onRemoved.addListener(async (tabId) => {
+        const isOurTab = await isTabRegistered(tabId);
+        if (isOurTab) {
+            console.log('[Shopping Intelligence] Tab pencarian ditutup manual oleh pengguna:', tabId);
+            await unregisterActiveTab(tabId);
 
-        // Beritahu Side Panel bahwa pencarian dibatalkan oleh pengguna
-        try {
-            chrome.runtime.sendMessage({
-                action: 'SEARCH_ERROR',
-                marketplace: 'shopee',
-                success: false,
-                status: 'CANCELLED_BY_USER',
-                error: 'Kamu menutup tab Shopee sebelum selesai membaca hasil.'
-            });
-        } catch (e) { }
-    }
-});
+            // Beritahu Side Panel bahwa pencarian dibatalkan oleh pengguna
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'SEARCH_ERROR',
+                    marketplace: 'shopee',
+                    success: false,
+                    status: 'CANCELLED_BY_USER',
+                    error: 'Kamu menutup tab Shopee sebelum selesai membaca hasil.'
+                });
+            } catch (e) { }
+        }
+    });
+}
 
 // =========================================================================
 // Fungsi Eksekusi Pencarian Native: Brief Active Window (active: true)
@@ -232,52 +236,293 @@ async function openAndExtractSearchTab(query, manifest) {
 }
 
 // =========================================================================
-// Listener Message: START_NATIVE_SEARCH & CANCEL_NATIVE_SEARCH
+// Deep Enrichment & Smart Fallback (CR-002 / ADR-09)
+// Mengambil harga & rating dari PDP untuk kandidat EXACT/EQUIVALENT yang kosong
 // =========================================================================
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'START_NATIVE_SEARCH') {
-        const query = request.query;
-        const manifest = request.manifest;
-        const marketplace = manifest?.id || 'shopee';
 
-        openAndExtractSearchTab(query, manifest)
-            .then(result => {
-                if (result.status === 'OK') {
+/**
+ * Ekstraksi detail produk PDP menggunakan tab tersembunyi (active: false)
+ * Memanfaatkan Adapter PDP marketplace terkait (Shopee, Tokopedia, Lazada, Blibli)
+ * @param {object} candidate - Objek kandidat produk
+ * @returns {Promise<object|null>} Data hasil ekstraksi { price, rating, seller }
+ */
+async function enrichSingleCandidatePdp(candidate) {
+    if (!candidate || !candidate.url) return null;
+
+    let tab = null;
+    try {
+        // 1. Buka tab dengan active: false (tersembunyi di latar belakang)
+        tab = await chrome.tabs.create({
+            url: candidate.url,
+            active: false
+        });
+
+        if (!tab || !tab.id) return null;
+        await registerActiveTab(tab.id);
+
+        // 2. Tunggu tab selesai memuat dokumen (status: complete) dengan batas timeout 6 detik
+        if (tab.status !== 'complete') {
+            await new Promise((resolve) => {
+                const timeoutTimer = setTimeout(() => {
+                    cleanupListener();
+                    resolve(); // Lanjutkan meskipun timeout tercapai
+                }, 6000);
+
+                function onUpdated(tabId, changeInfo) {
+                    if (tabId === tab.id && changeInfo.status === 'complete') {
+                        cleanupListener();
+                        resolve();
+                    }
+                }
+
+                function cleanupListener() {
+                    clearTimeout(timeoutTimer);
+                    if (typeof chrome !== 'undefined' && chrome.tabs?.onUpdated?.removeListener) {
+                        chrome.tabs.onUpdated.removeListener(onUpdated);
+                    }
+                }
+
+                if (typeof chrome !== 'undefined' && chrome.tabs?.onUpdated?.addListener) {
+                    chrome.tabs.onUpdated.addListener(onUpdated);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        // Pastikan tab masih eksis
+        try {
+            await chrome.tabs.get(tab.id);
+        } catch (e) {
+            return null;
+        }
+
+        // 3. Eksekusi script ekstraksi di tab PDP
+        if (typeof chrome !== 'undefined' && chrome.scripting && typeof chrome.scripting.executeScript === 'function') {
+            const results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                    try {
+                        const currentUrl = window.location.href;
+
+                        // 3.1 Coba gunakan Adapter PDP yang sudah terdaftar di window tab
+                        const adapters = [
+                            typeof window.ShopeeAdapter === 'function' ? new window.ShopeeAdapter() : null,
+                            typeof window.TokopediaAdapter === 'function' ? new window.TokopediaAdapter() : null,
+                            typeof window.LazadaAdapter === 'function' ? new window.LazadaAdapter() : null,
+                            typeof window.BlibliAdapter === 'function' ? new window.BlibliAdapter() : null
+                        ].filter(Boolean);
+
+                        const adapter = adapters.find(a => a.matchesUrl(currentUrl));
+                        if (adapter && typeof adapter.extractProduct === 'function') {
+                            const prod = adapter.extractProduct();
+                            if (prod && (prod.price !== null || prod.rating !== null)) {
+                                return {
+                                    price: prod.price || null,
+                                    rating: prod.rating || null,
+                                    seller: prod.seller || null
+                                };
+                            }
+                        }
+
+                        // 3.2 Fallback: Schema.org JSON-LD
+                        const jsonLds = document.querySelectorAll('script[type="application/ld+json"]');
+                        for (const s of jsonLds) {
+                            try {
+                                const data = JSON.parse(s.textContent);
+                                if (data['@type'] === 'Product' || data['@type'] === 'https://schema.org/Product') {
+                                    const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
+                                    let price = null;
+                                    if (offer && offer.price) {
+                                        const p = Math.round(parseFloat(offer.price));
+                                        if (!isNaN(p) && p > 0) price = p;
+                                    }
+                                    let rating = null;
+                                    if (data.aggregateRating && data.aggregateRating.ratingValue) {
+                                        const r = parseFloat(data.aggregateRating.ratingValue);
+                                        if (!isNaN(r)) rating = r;
+                                    }
+                                    if (price !== null || rating !== null) {
+                                        return { price, rating, seller: offer?.seller?.name || null };
+                                    }
+                                }
+                            } catch (e) { }
+                        }
+
+                        // 3.3 Fallback: OpenGraph Meta
+                        const ogPrice = document.querySelector('meta[property="product:price:amount"]')?.getAttribute('content');
+                        if (ogPrice) {
+                            const p = Math.round(parseFloat(ogPrice));
+                            if (!isNaN(p) && p > 0) return { price: p, rating: null, seller: null };
+                        }
+
+                        return null;
+                    } catch (e) {
+                        return { error: e.message };
+                    }
+                }
+            });
+
+            if (Array.isArray(results) && results.length > 0 && results[0].result) {
+                return results[0].result;
+            }
+        }
+
+        return null;
+    } catch (err) {
+        console.warn('[ServiceWorker:DeepEnrichment] Gagal mengekstrak data PDP:', candidate.url, err.message);
+        return null;
+    } finally {
+        // JAMINAN MUTLAK: Selalu tutup tab di finally block dalam kondisi apa pun
+        if (tab && tab.id) {
+            await unregisterActiveTab(tab.id);
+            try {
+                await chrome.tabs.remove(tab.id);
+                console.log('[ServiceWorker:DeepEnrichment] Tab enrichment berhasil ditutup:', tab.id);
+            } catch (e) { }
+        }
+    }
+}
+
+/**
+ * Melakukan Deep Enrichment untuk kandidat yang memiliki harga kosong
+ * Membuka tab tersembunyi (active: false) secara sekuensial (maksimal 3 kandidat)
+ * @param {Array<object>} candidates 
+ * @returns {Promise<Array<object>>}
+ */
+async function enrichMissingData(candidates) {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+        return candidates || [];
+    }
+
+    // Filter kandidat: price === null/0 DAN matchType adalah 'EXACT' atau 'EQUIVALENT'
+    const eligibleIndices = [];
+    for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const isPriceMissing = c && (c.price === null || c.price === undefined || c.price === 0);
+        const isMatchEligible = c && (c.matchType === 'EXACT' || c.matchType === 'EQUIVALENT');
+        const hasUrl = c && typeof c.url === 'string' && c.url.trim().length > 0;
+
+        if (isPriceMissing && isMatchEligible && hasUrl) {
+            eligibleIndices.push(i);
+            if (eligibleIndices.length >= 3) {
+                // Batasi maksimal 3 kandidat per pencarian
+                break;
+            }
+        }
+    }
+
+    if (eligibleIndices.length === 0) {
+        return candidates;
+    }
+
+    console.log(`[ServiceWorker:DeepEnrichment] Memulai enrichment untuk ${eligibleIndices.length} kandidat secara sekuensial.`);
+
+    // Eksekusi SECARA SEKUENSIAL (for ... of, BUKAN paralel Promise.all)
+    for (const idx of eligibleIndices) {
+        const candidate = candidates[idx];
+        try {
+            const enrichedData = await enrichSingleCandidatePdp(candidate);
+            if (enrichedData && typeof enrichedData === 'object') {
+                if (enrichedData.price !== null && enrichedData.price !== undefined) {
+                    candidate.price = enrichedData.price;
+                    candidate.enriched = true;
+                    candidate.enrichmentSource = 'deep-pdp-adapter';
+                }
+                if (enrichedData.rating !== null && enrichedData.rating !== undefined && candidate.rating === null) {
+                    candidate.rating = enrichedData.rating;
+                }
+                if (enrichedData.seller && !candidate.shopName) {
+                    candidate.shopName = enrichedData.seller;
+                }
+            }
+        } catch (err) {
+            console.warn(`[ServiceWorker:DeepEnrichment] Error saat enrichment kandidat [${idx}]:`, err.message);
+        }
+    }
+
+    return candidates;
+}
+
+// =========================================================================
+// Listener Message: START_NATIVE_SEARCH, ENRICH_MISSING_DATA, & CANCEL
+// =========================================================================
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'START_NATIVE_SEARCH') {
+            const query = request.query;
+            const manifest = request.manifest;
+            const marketplace = manifest?.id || 'shopee';
+
+            openAndExtractSearchTab(query, manifest)
+                .then(result => {
+                    if (result.status === 'OK') {
+                        sendResponse({
+                            status: 'OK',
+                            success: true,
+                            marketplace: marketplace,
+                            candidates: result.candidates || []
+                        });
+                    } else {
+                        sendResponse({
+                            status: result.status,
+                            success: false,
+                            marketplace: marketplace,
+                            error: result.reason || result.error || 'Pencarian gagal',
+                            candidates: []
+                        });
+                    }
+                })
+                .catch(err => {
+                    sendResponse({
+                        status: 'ERROR',
+                        success: false,
+                        marketplace: marketplace,
+                        error: err.message
+                    });
+                });
+
+            return true; // Asynchronous sendResponse
+        }
+
+        if (request.action === 'ENRICH_MISSING_DATA' || request.action === 'ENRICH_CANDIDATES') {
+            enrichMissingData(request.candidates)
+                .then(enriched => {
                     sendResponse({
                         status: 'OK',
                         success: true,
-                        marketplace: marketplace,
-                        candidates: result.candidates || []
+                        candidates: enriched
                     });
-                } else {
+                })
+                .catch(err => {
                     sendResponse({
-                        status: result.status,
+                        status: 'ERROR',
                         success: false,
-                        marketplace: marketplace,
-                        error: result.reason || result.error || 'Pencarian gagal',
-                        candidates: []
+                        error: err.message,
+                        candidates: request.candidates
                     });
-                }
-            })
-            .catch(err => {
-                sendResponse({
-                    status: 'ERROR',
-                    success: false,
-                    marketplace: marketplace,
-                    error: err.message
                 });
+
+            return true;
+        }
+
+        if (request.action === 'CANCEL_NATIVE_SEARCH') {
+            console.log('[Shopping Intelligence] CANCEL_NATIVE_SEARCH diterima.');
+            cleanupLeftoverTabs().then(() => {
+                sendResponse({ success: true, cancelled: true });
             });
+            return true;
+        }
+    });
+}
 
-        return true; // Asynchronous sendResponse
-    }
-
-    if (request.action === 'CANCEL_NATIVE_SEARCH') {
-        console.log('[Shopping Intelligence] CANCEL_NATIVE_SEARCH diterima.');
-        cleanupLeftoverTabs().then(() => {
-            sendResponse({ success: true, cancelled: true });
-        });
-        return true;
-    }
-});
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        enrichMissingData,
+        enrichSingleCandidatePdp,
+        openAndExtractSearchTab,
+        cleanupLeftoverTabs
+    };
+}
 
 console.log('[Shopping Intelligence] Service worker started.');
