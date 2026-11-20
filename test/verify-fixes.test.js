@@ -22,11 +22,23 @@ require('../extension/adapters/shopee-adapter.js');
 
 let passedTests = 0;
 let totalTests = 0;
+const pendingTests = [];
 
 function it(name, fn) {
     totalTests++;
     try {
-        fn();
+        const res = fn();
+        if (res && typeof res.then === 'function') {
+            const p = res.then(() => {
+                console.log(`  ✅ PASS: ${name}`);
+                passedTests++;
+            }).catch(err => {
+                console.error(`  ❌ FAIL: ${name}`);
+                console.error(`     Error: ${err.message}`);
+            });
+            pendingTests.push(p);
+            return;
+        }
         console.log(`  ✅ PASS: ${name}`);
         passedTests++;
     } catch (err) {
@@ -102,6 +114,36 @@ it('Matras angin tiup HARUS TETAP DITOLAK', () => {
     const candTitle = 'Bestway Matras Angin Tiup Single Pompa Manual';
     const match = searchClient.isCategoryMatch(candTitle, null, origMattress, 250000);
     assert.strictEqual(match, false);
+});
+
+// Penambahan Uji Gatekeeper v2 (CR-004 / ADR-13 / T4.15)
+it('Promo Murah Sprei Kasur Springbed HARUS DITOLAK MUTLAK oleh Head-Noun Lock (Layer 0)', () => {
+    const candTitle = 'Promo Murah Sprei Kasur Springbed 180x200';
+    const match = searchClient.isCategoryMatch(candTitle, null, origMattress, 3200000);
+    assert.strictEqual(match, false, 'Sprei di awal judul (setelah promo stripping) harus ditolak mutlak');
+});
+
+it('Set Bantal Guling untuk Kasur HARUS DITOLAK MUTLAK oleh Prepositional Guard (Layer 1)', () => {
+    const candTitle = 'Set Bantal Guling untuk Kasur Springbed';
+    const match = searchClient.isCategoryMatch(candTitle, null, origMattress, 3000000);
+    assert.strictEqual(match, false, 'Frasa "untuk Kasur" harus ditolak mutlak sebagai frasa pelengkap');
+});
+
+it('Kasur Springbed 180x200 Gratis 2 Bantal HARUS TETAP LOLOS (Unit Utama + Bonus)', () => {
+    const candTitle = 'Kasur Springbed 180x200 Gratis 2 Bantal';
+    const match = searchClient.isCategoryMatch(candTitle, null, origMattress, 3100000);
+    assert.strictEqual(match, true, 'Unit utama kasur dengan bonus bantal wajib diloloskan');
+});
+
+it('Price Floor 30% harus menolak kandidat dengan harga < 30% harga acuan (Layer 3)', () => {
+    const candTitle = 'Kasur Springbed Central Deluxe 160x200';
+    // 30% dari 3.500.000 adalah 1.050.000. Harga 900.000 (< 30%) harus ditolak
+    const match = searchClient.isCategoryMatch(candTitle, null, origMattress, 900000);
+    assert.strictEqual(match, false, 'Harga di bawah 30% dari 3.500.000 harus ditolak');
+    
+    // Harga 1.200.000 (> 30%) harus lolos
+    const matchPass = searchClient.isCategoryMatch(candTitle, null, origMattress, 1200000);
+    assert.strictEqual(matchPass, true, 'Harga di atas 30% dari 3.500.000 harus lolos');
 });
 
 console.log('\n=== TEST SUITE 3: SHOPEE NATIVE SCRAPER 50% SIMILARITY FILTER ===');
@@ -251,10 +293,130 @@ it('Selector [data-cmtid] harus terdaftar dalam getReviewElements dan extractRev
     assert.ok(adapterCode.includes('penilaian produk'), 'ShopeeAdapter harus mendukung selector berbasis teks fallback');
 });
 
-console.log(`\n========================================`);
-console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
-console.log(`========================================\n`);
+console.log('\n=== TEST SUITE 8: SMART SEARCH & MATCHING ENGINE UPGRADE (CR-004) ===');
 
-if (passedTests !== totalTests) {
-    process.exit(1);
-}
+// 1. Verifikasi Ekstraksi imageUrl dari Manifest & CandidateNormalizer
+it('Ekstraksi imageUrl dari manifest dan validasi di CandidateNormalizer (ADR-11)', () => {
+    const { normalizeCandidate } = require('../extension/shared/candidate-normalizer.js');
+    const shopeeM = require('../extension/manifest/marketplace-manifest/shopee.js');
+    const tokpedM = require('../extension/manifest/marketplace-manifest/tokopedia.js');
+    const lazadaM = require('../extension/manifest/marketplace-manifest/lazada.js');
+    const blibliM = require('../extension/manifest/marketplace-manifest/blibli.js');
+
+    [shopeeM, tokpedM, lazadaM, blibliM].forEach(m => {
+        assert.ok(m.fields.image, `${m.id} harus memiliki konfigurasi fields.image`);
+        assert.ok(Array.isArray(m.fields.image.attributes), `${m.id} attributes harus array`);
+        assert.ok(Array.isArray(m.fields.image.rejectPatterns), `${m.id} rejectPatterns harus array string pattern`);
+    });
+
+    const validCand = normalizeCandidate({
+        title: 'Kasur Springbed Central 160x200',
+        price: '3000000',
+        url: 'https://shopee.co.id/product-i.1.2',
+        imageUrl: 'https://cf.shopee.co.id/file/sample.jpg'
+    }, 'shopee', 'native-assisted');
+
+    assert.strictEqual(validCand.imageUrl, 'https://cf.shopee.co.id/file/sample.jpg');
+
+    const dummyCand = normalizeCandidate({
+        title: 'Kasur Springbed Central 160x200',
+        price: '3000000',
+        url: 'https://shopee.co.id/product-i.1.2',
+        imageUrl: 'data:image/svg+xml;base64,...'
+    }, 'shopee', 'native-assisted');
+
+    assert.strictEqual(dummyCand.imageUrl, null, 'data:image harus dinetralkan menjadi null');
+});
+
+// 2. Verifikasi Penolakan Mutlak Aksesoris vs Unit Utama + Bonus (ADR-13)
+it('Verifikasi penolakan mutlak Sprei & Set Bantal Guling vs kelolosan Kasur + Bonus Bantal (ADR-13)', () => {
+    const { isCategoryMatch } = require('../extension/shared/gatekeeper.js');
+    const refKasur = { title: 'Kasur Springbed Comforta 160x200', price: 3500000 };
+
+    // Kasus A: "Promo Murah Sprei Kasur Springbed 180x200" -> Wajib DITOLAK
+    const candSprei = 'Promo Murah Sprei Kasur Springbed 180x200';
+    assert.strictEqual(isCategoryMatch(candSprei, null, refKasur, 3200000), false, 'Sprei harus ditolak mutlak');
+
+    // Kasus B: "Set Bantal Guling untuk Kasur" -> Wajib DITOLAK
+    const candSetBantal = 'Set Bantal Guling untuk Kasur';
+    assert.strictEqual(isCategoryMatch(candSetBantal, null, refKasur, 2000000), false, 'Set bantal untuk kasur harus ditolak');
+
+    // Kasus C: "Kasur Springbed 180x200 Gratis 2 Bantal" -> Wajib LOLOS
+    const candKasurBonus = 'Kasur Springbed 180x200 Gratis 2 Bantal';
+    assert.strictEqual(isCategoryMatch(candKasurBonus, null, refKasur, 3100000), true, 'Kasur dengan bonus bantal wajib lolos');
+});
+
+// 3. Verifikasi Penyeimbangan Kandidat Lintas Marketplace & Scoped Fallback (ADR-12)
+it('Verifikasi penyeimbangan kandidat multi-marketplace dan Scoped Fallback Exa (ADR-12)', async () => {
+    const { ProviderRegistry } = require('../extension/shared/provider-registry.js');
+    const registry = new ProviderRegistry();
+
+    // Mock Provider Native Shopee & Tokopedia
+    registry.registerProvider({
+        getName: () => 'shopee-native',
+        getPriority: () => 3,
+        isAvailable: async () => true,
+        search: async () => [
+            { title: 'Shopee Item 1', price: 200000, url: 'https://shopee.co.id/item-1' },
+            { title: 'Shopee Item 2', price: 200000, url: 'https://shopee.co.id/item-2' },
+            { title: 'Shopee Item 3', price: 200000, url: 'https://shopee.co.id/item-3' },
+            { title: 'Shopee Item 4', price: 200000, url: 'https://shopee.co.id/item-4' }
+        ]
+    });
+
+    registry.registerProvider({
+        getName: () => 'tokopedia-native',
+        getPriority: () => 3,
+        isAvailable: async () => true,
+        search: async () => [
+            { title: 'Tokped Item 1', price: 210000, url: 'https://tokopedia.com/item-1' },
+            { title: 'Tokped Item 2', price: 210000, url: 'https://tokopedia.com/item-2' }
+        ]
+    });
+
+    // Mock Provider Lazada (Terkendala / 0 item)
+    registry.registerProvider({
+        getName: () => 'lazada-native',
+        getPriority: () => 3,
+        isAvailable: async () => true,
+        search: async () => []
+    });
+
+    // Mock Exa Provider untuk Scoped Fallback
+    const scopedDomainsCaptured = [];
+    registry.registerProvider({
+        getName: () => 'exa',
+        getPriority: () => 5,
+        isAvailable: async () => true,
+        search: async (q, opts) => {
+            scopedDomainsCaptured.push(opts.includeDomains);
+            return [
+                { title: 'Lazada Scoped Item 1', price: 205000, url: 'https://www.lazada.co.id/products/item-1.html' },
+                { title: 'Lazada Scoped Item 2', price: 205000, url: 'https://www.lazada.co.id/products/item-2.html' }
+            ];
+        }
+    });
+
+    const results = await registry.searchStratified('kasur springbed', {
+        targetMarketplaces: ['shopee', 'tokopedia', 'lazada'],
+        minCandidatesPerPlatform: 4
+    });
+
+    assert.ok(results.length >= 8);
+    // Verifikasi bahwa Scoped Fallback terpanggil untuk Lazada
+    assert.ok(scopedDomainsCaptured.some(domains => domains.includes('lazada.co.id')));
+});
+
+(async () => {
+    if (pendingTests.length > 0) {
+        await Promise.all(pendingTests);
+    }
+
+    console.log(`\n========================================`);
+    console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
+    console.log(`========================================\n`);
+
+    if (passedTests !== totalTests) {
+        process.exit(1);
+    }
+})();

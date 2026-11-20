@@ -792,6 +792,36 @@ const specMap = {
     UNKNOWN: { cls: 'gray', text: 'Spec Belum Dicek ❓' }
 };
 
+/**
+ * Menyeimbangkan urutan kandidat produk lintas marketplace agar tidak didominasi satu platform (ADR-12 / T4.16)
+ * @param {Array<object>} items 
+ * @returns {Array<object>}
+ */
+function balanceByMarketplace(items) {
+    if (!Array.isArray(items) || items.length <= 1) return items || [];
+    const grouped = {};
+    for (const item of items) {
+        const m = (item.marketplace || (item.url ? new window.SearchClient().getMarketplace(item.url) : 'other')).toLowerCase();
+        if (!grouped[m]) grouped[m] = [];
+        grouped[m].push(item);
+    }
+    const result = [];
+    const keys = Object.keys(grouped);
+    let added = true;
+    let round = 0;
+    while (added) {
+        added = false;
+        for (const k of keys) {
+            if (round < grouped[k].length) {
+                result.push(grouped[k][round]);
+                added = true;
+            }
+        }
+        round++;
+    }
+    return result;
+}
+
 function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 0) {
     hide(els.crossMarketLoading);
 
@@ -829,6 +859,11 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
 
         const specInfo = specMap[specStatus || candidate.spec_status || candidate.specStatus] || null;
 
+        const fallbackIcon = '📦';
+        const imgHtml = candidate.imageUrl
+            ? `<img src="${candidate.imageUrl}" alt="${candidate.title || 'Produk'}" class="deal-card-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="deal-card-thumb-placeholder" style="display:none;">${fallbackIcon}</div>`
+            : `<div class="deal-card-thumb-placeholder">${fallbackIcon}</div>`;
+
         container.innerHTML = `
             <div class="deal-card-header">
                 <div style="display: flex; align-items: center; gap: 6px;">
@@ -837,12 +872,17 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                 </div>
                 ${specInfo ? `<span class="status-badge ${specInfo.cls}">${specInfo.text}</span>` : ''}
             </div>
-            <div class="deal-card-title">${candidate.title}</div>
-            <div class="deal-card-price-row">
-                <span class="deal-card-price">${formatPrice(priceNum)}</span>
-                ${savingsText ? `<span class="deal-card-savings">${savingsText}</span>` : ''}
+            <div style="display: flex; gap: 10px; align-items: flex-start; margin-top: 8px;">
+                ${imgHtml}
+                <div style="flex: 1; min-width: 0;">
+                    <div class="deal-card-title">${candidate.title}</div>
+                    <div class="deal-card-price-row">
+                        <span class="deal-card-price">${formatPrice(priceNum)}</span>
+                        ${savingsText ? `<span class="deal-card-savings">${savingsText}</span>` : ''}
+                    </div>
+                </div>
             </div>
-            ${reason ? `<div class="deal-card-reason">💡 ${reason}</div>` : ''}
+            ${reason ? `<div class="deal-card-reason" style="margin-top: 6px;">💡 ${reason}</div>` : ''}
             <a href="${candidate.url || '#'}" target="_blank" rel="noopener noreferrer" class="deal-card-link-btn">
                 Buka di ${candidate.marketplace || 'Toko'} ↗
             </a>
@@ -858,8 +898,8 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
         renderDealCard(els.bestValueSection, 'best', '🏆 Best Value', best, best?.reason, best?.spec_status);
         renderDealCard(els.cheapestSection, 'cheapest', '🏷️ Termurah', cheap, cheap?.reason, cheap?.spec_status);
 
-        // Render Alternatif Lainnya (hingga 10 produk dengan Badge Spesifikasi)
-        const others = evaluation.others || [];
+        // Render Alternatif Lainnya (diseimbangkan antar marketplace)
+        const others = balanceByMarketplace(evaluation.others || []);
         if (others.length > 0 && els.otherResultsSection) {
             const displayCount = Math.min(others.length, 10);
             els.otherResultsSection.innerHTML = `
@@ -871,24 +911,33 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         const m = getMarketplaceBadge(o.marketplace || (o.url ? new window.SearchClient().getMarketplace(o.url) : 'Marketplace'));
                         const sStatus = o.spec_status || o.specStatus || 'EXACT';
                         const sInfo = specMap[sStatus] || specMap.EXACT;
+                        const imgOtherHtml = o.imageUrl
+                            ? `<img src="${o.imageUrl}" alt="${o.title || 'Produk'}" class="other-deal-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="other-deal-thumb-placeholder" style="display:none;">📦</div>`
+                            : `<div class="other-deal-thumb-placeholder">📦</div>`;
+
                         return `
                             <div class="other-deal-item">
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span class="badge-marketplace ${m.cls}">${m.label}</span>
-                                        <span class="status-badge ${sInfo.cls}" style="font-size: 0.68rem; padding: 2px 6px;">${sInfo.text}</span>
+                                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                                    ${imgOtherHtml}
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <span class="badge-marketplace ${m.cls}">${m.label}</span>
+                                                <span class="status-badge ${sInfo.cls}" style="font-size: 0.68rem; padding: 2px 6px;">${sInfo.text}</span>
+                                            </div>
+                                            <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: var(--accent-violet);">
+                                                ${formatPrice(o.price)}
+                                            </span>
+                                        </div>
+                                        <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.3; color: var(--fg-slate); margin-top: 2px;">
+                                            ${o.title}
+                                        </div>
+                                        ${o.reason ? `<div style="font-size: 0.74rem; color: #64748B; margin-top: 2px;">${o.reason}</div>` : ''}
+                                        <a href="${o.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 4px; display: inline-block;">
+                                            Kunjungi Toko ↗
+                                        </a>
                                     </div>
-                                    <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: var(--accent-violet);">
-                                        ${formatPrice(o.price)}
-                                    </span>
                                 </div>
-                                <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.3; color: var(--fg-slate);">
-                                    ${o.title}
-                                </div>
-                                ${o.reason ? `<div style="font-size: 0.74rem; color: #64748B;">${o.reason}</div>` : ''}
-                                <a href="${o.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 2px;">
-                                    Kunjungi Toko ↗
-                                </a>
                             </div>
                         `;
                     }).join('')}
@@ -901,9 +950,10 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
     } else {
         // Kasus 2: RESILIENT FALLBACK (Groq offline atau format error)
         console.warn('[SI:CrossMarket] Evaluasi AI Groq null -> Menjalankan Fallback Deterministik dari Exa');
-        const validPriceCandidates = [...searchResults].filter(c => c.price && c.price > 1000).sort((a, b) => a.price - b.price);
-        const cheapestPick = validPriceCandidates[0] || searchResults[0];
-        const bestPick = searchResults.find(c => c !== cheapestPick) || cheapestPick;
+        const balancedResults = balanceByMarketplace(searchResults);
+        const validPriceCandidates = [...balancedResults].filter(c => c.price && c.price > 1000).sort((a, b) => a.price - b.price);
+        const cheapestPick = validPriceCandidates[0] || balancedResults[0];
+        const bestPick = balancedResults.find(c => c !== cheapestPick) || cheapestPick;
 
         renderDealCard(
             els.bestValueSection,
@@ -927,7 +977,7 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
             hide(els.cheapestSection);
         }
 
-        const remaining = searchResults.filter(c => c !== bestPick && c !== cheapestPick);
+        const remaining = balanceByMarketplace(searchResults.filter(c => c !== bestPick && c !== cheapestPick));
         if (remaining.length > 0 && els.otherResultsSection) {
             const displayCount = Math.min(remaining.length, 10);
             els.otherResultsSection.innerHTML = `
@@ -939,23 +989,32 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         const m = getMarketplaceBadge(o.marketplace || (o.url ? new window.SearchClient().getMarketplace(o.url) : 'Marketplace'));
                         const sStatus = o.spec_status || o.specStatus || 'EXACT';
                         const sInfo = specMap[sStatus] || specMap.EXACT;
+                        const imgOtherHtml = o.imageUrl
+                            ? `<img src="${o.imageUrl}" alt="${o.title || 'Produk'}" class="other-deal-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="other-deal-thumb-placeholder" style="display:none;">📦</div>`
+                            : `<div class="other-deal-thumb-placeholder">📦</div>`;
+
                         return `
                             <div class="other-deal-item">
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <span class="badge-marketplace ${m.cls}">${m.label}</span>
-                                        <span class="status-badge ${sInfo.cls}" style="font-size: 0.68rem; padding: 2px 6px;">${sInfo.text}</span>
+                                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                                    ${imgOtherHtml}
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+                                            <div style="display: flex; align-items: center; gap: 6px;">
+                                                <span class="badge-marketplace ${m.cls}">${m.label}</span>
+                                                <span class="status-badge ${sInfo.cls}" style="font-size: 0.68rem; padding: 2px 6px;">${sInfo.text}</span>
+                                            </div>
+                                            <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: var(--accent-violet);">
+                                                ${formatPrice(o.price)}
+                                            </span>
+                                        </div>
+                                        <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.3; color: var(--fg-slate); margin-top: 2px;">
+                                            ${o.title}
+                                        </div>
+                                        <a href="${o.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 4px; display: inline-block;">
+                                            Kunjungi Toko ↗
+                                        </a>
                                     </div>
-                                    <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: var(--accent-violet);">
-                                        ${formatPrice(o.price)}
-                                    </span>
                                 </div>
-                                <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.3; color: var(--fg-slate);">
-                                    ${o.title}
-                                </div>
-                                <a href="${o.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 2px;">
-                                    Kunjungi Toko ↗
-                                </a>
                             </div>
                         `;
                     }).join('')}

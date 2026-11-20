@@ -1037,6 +1037,53 @@ h4,
     background: #FDE047;
 }
 
+/* Thumbnail Produk Alternatif (ADR-11 / T4.16) */
+.deal-card-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1.5px solid var(--fg-slate);
+    background: #FFFFFF;
+    flex-shrink: 0;
+}
+
+.deal-card-thumb-placeholder {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1.5px dashed #94A3B8;
+    background: #F1F5F9;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.other-deal-thumb {
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #CBD5E1;
+    background: #FFFFFF;
+    flex-shrink: 0;
+}
+
+.other-deal-thumb-placeholder {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px dashed #CBD5E1;
+    background: #F8FAFC;
+    font-size: 1.15rem;
+    flex-shrink: 0;
+}
+
 /* Other Candidates List */
 .other-results-card {
     border: 2px solid var(--fg-slate);
