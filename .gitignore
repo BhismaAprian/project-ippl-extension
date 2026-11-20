@@ -5,3 +5,4 @@ progres.md
 *.md
 !PROGRESS.md
 /shopee
+/backend/node_modules
