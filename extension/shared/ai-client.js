@@ -10,9 +10,10 @@
 
 class AIClient {
     constructor() {
-        this.endpoint = window.GROQ_API_ENDPOINT || 'https://api.groq.com/openai/v1/chat/completions';
+        const configuredEndpoint = (typeof window !== 'undefined' && window.GROQ_API_ENDPOINT) || 'https://api.groq.com/openai/v1/chat/completions';
+        this.endpoint = configuredEndpoint;
         // Model utama: openai/gpt-oss-120b. Jika GROQ_MODEL sebelumnya 'llama-3.3-70b-versatile', otomatis ubah ke openai/gpt-oss-120b
-        const configuredModel = window.GROQ_MODEL;
+        const configuredModel = (typeof window !== 'undefined' && window.GROQ_MODEL) || null;
         this.model = (configuredModel && configuredModel !== 'llama-3.3-70b-versatile') ? configuredModel : 'openai/gpt-oss-120b';
         this.fallbackModel = 'llama-3.1-70b-versatile';
     }
@@ -194,6 +195,10 @@ CRITICAL GATEKEEPER RULES:
    - "DOWNGRADE": lower specs (e.g., 64GB vs 128GB, thinner foam).
    - "DIFFERENT": different model, variant, or minor specification divergence.
 5. "others": Include up to 10 valid alternatives that match the category. For each, specify title, url, price, spec_status, and reason.
+6. STRICT LANGUAGE & CONCISENESS RULE (NFR-16):
+   - The "reason" field for "best_value", "cheapest", and all items in "others" MUST be written strictly in concise Indonesian (Bahasa Indonesia) with a MAXIMUM of 10 words.
+   - Example valid reasons: "Tebal 30cm + pocket spring, bonus bantal", "Garansi resmi 10 tahun, busa densitas tinggi", "Harga termurah, ukuran pas 160x200".
+   - You are STRICTLY FORBIDDEN from writing the "reason" field in English.
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -202,14 +207,14 @@ Return ONLY a valid JSON object matching this schema:
     "url": "",
     "price": 0,
     "spec_status": "EXACT",
-    "reason": ""
+    "reason": "Alasan singkat Bahasa Indonesia maksimal 10 kata"
   },
   "cheapest": {
     "title": "",
     "url": "",
     "price": 0,
     "spec_status": "EXACT",
-    "reason": ""
+    "reason": "Alasan singkat Bahasa Indonesia maksimal 10 kata"
   },
   "others": [
     {
@@ -217,7 +222,7 @@ Return ONLY a valid JSON object matching this schema:
       "url": "",
       "price": 0,
       "spec_status": "EXACT",
-      "reason": ""
+      "reason": "Alasan singkat Bahasa Indonesia maksimal 10 kata"
     }
   ]
 }`;
@@ -459,7 +464,55 @@ RULES:
             evaluatedAt: new Date().toISOString()
         };
     }
+
+    /**
+     * Memperluas kueri pencarian dengan variasi semantik, sinonim lokal, dan penamaan marketplace (ADR-12 / T4.13)
+     * @param {object} productFingerprint - { brand, model, category, keySpecs, title }
+     * @returns {Promise<Array<string>|null>}
+     */
+    async expandProductQueries(productFingerprint) {
+        let groqKey = null;
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            try {
+                const stored = await chrome.storage.local.get(['groqKey']);
+                groqKey = stored?.groqKey || null;
+            } catch (e) { }
+        }
+
+        if (!groqKey) {
+            return null;
+        }
+
+        const prompt = `Anda adalah Shopping Query Optimizer untuk e-commerce Indonesia (Shopee, Tokopedia, Lazada, Blibli).
+Diberikan produk acuan:
+Judul: ${productFingerprint?.title || ''}
+Brand: ${productFingerprint?.brand || ''}
+Model: ${productFingerprint?.model || ''}
+Kategori: ${productFingerprint?.category || ''}
+Spesifikasi: ${JSON.stringify(productFingerprint?.keySpecs || {})}
+
+Tugas: Buatlah 2 sampai 3 variasi kueri pencarian singkat dan efektif dalam Bahasa Indonesia yang biasa digunakan oleh pembeli dan penjual di Lazada, Tokopedia, Shopee, dan Blibli (misal: sinonim lokal ukuran kasur 160x200/Queen/No 2, kasur/springbed, laptop/notebook, ram laptop/sodimm).
+Kembalikan HANYA format JSON valid berikut:
+{
+  "variants": ["kueri 1", "kueri 2", "kueri 3"]
+}`;
+
+        try {
+            const res = await this.requestJson(prompt, groqKey);
+            if (res && Array.isArray(res.variants) && res.variants.length > 0) {
+                return res.variants.slice(0, 3).map(q => String(q).trim()).filter(Boolean);
+            }
+        } catch (err) {
+            console.warn('[AIClient:expandProductQueries] AI query expansion gagal, beralih ke fallback deterministik:', err.message);
+        }
+        return null;
+    }
 }
 
-// Bind ke window object
-window.AIClient = AIClient;
+// UMD-Lite Pattern (ADR-02)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { AIClient };
+}
+if (typeof window !== 'undefined') {
+    window.AIClient = AIClient;
+}

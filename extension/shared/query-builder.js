@@ -30,6 +30,83 @@ const NEGATIVE_TERMS_BY_CATEGORY = {
 };
 
 /**
+ * Kamus sinonim dan normalisasi lokal Indonesia (ADR-12 / T4.13)
+ */
+const SYNONYM_DICTIONARY = [
+    // Ukuran kasur / springbed
+    { pattern: /\b(?:160\s*x\s*200|160x200)\b/i, variants: ['queen', 'no 2', 'nomor 2'] },
+    { pattern: /\b(?:180\s*x\s*200|180x200)\b/i, variants: ['king', 'no 1', 'nomor 1'] },
+    { pattern: /\b(?:120\s*x\s*200|120x200)\b/i, variants: ['super single', 'no 3', 'nomor 3'] },
+    { pattern: /\b(?:200\s*x\s*200|200x200)\b/i, variants: ['super king', 'extra king'] },
+    { pattern: /\bqueen\b/i, variants: ['160x200', 'no 2'] },
+    { pattern: /\bking\b/i, variants: ['180x200', 'no 1'] },
+    // Jenis kasur
+    { pattern: /\bkasur\b/i, variants: ['springbed', 'matras'] },
+    { pattern: /\bspringbed\b|\bspring\s+bed\b/i, variants: ['kasur', 'matras'] },
+    // Komputer / RAM
+    { pattern: /\bram\s+laptop\b/i, variants: ['ram sodimm', 'memory sodimm'] },
+    { pattern: /\bram\s+sodimm\b/i, variants: ['ram laptop', 'memori sodimm'] },
+    { pattern: /\blaptop\b/i, variants: ['notebook'] },
+    { pattern: /\bnotebook\b/i, variants: ['laptop'] },
+    // Smartphone
+    { pattern: /\bsmartphone\b/i, variants: ['hp', 'ponsel'] },
+    { pattern: /\bhp\b/i, variants: ['smartphone', 'handphone'] }
+];
+
+/**
+ * Menghasilkan 2-3 kueri variasi semantik deterministik berbasis sinonim lokal dan penamaan marketplace
+ * @param {object} productFingerprint 
+ * @returns {Array<string>}
+ */
+function generateDeterministicVariants(productFingerprint) {
+    const fp = (productFingerprint && typeof productFingerprint === 'object') ? productFingerprint : {};
+    const brand = cleanText(fp.brand);
+    const model = cleanText(fp.model);
+    const category = cleanText(fp.category);
+    const titleCleaned = cleanTitle(fp.title);
+    const specs = extractSpecsList(fp.keySpecs);
+    const mainSpecs = specs.slice(0, 2).join(' ');
+
+    const baseAnchor = cleanText(`${brand} ${model || titleCleaned || category || 'produk'}`);
+    const variantsSet = new Set();
+
+    // 1. Coba substitusi aturan sinonim pada teks gabungan
+    const textToMatch = `${baseAnchor} ${mainSpecs}`.toLowerCase();
+    for (const rule of SYNONYM_DICTIONARY) {
+        if (rule.pattern.test(textToMatch)) {
+            for (const synonym of rule.variants) {
+                const replaced = cleanText(textToMatch.replace(rule.pattern, synonym));
+                if (replaced && replaced !== textToMatch) {
+                    variantsSet.add(replaced);
+                    if (variantsSet.size >= 3) break;
+                }
+            }
+        }
+        if (variantsSet.size >= 3) break;
+    }
+
+    // 2. Jika varian masih kurang dari 2, tambahkan variasi struktural umum
+    if (variantsSet.size < 2) {
+        if (brand && model) {
+            if (category) variantsSet.add(cleanText(`${category} ${brand} ${model}`));
+            if (mainSpecs) variantsSet.add(cleanText(`${brand} ${model} ${mainSpecs}`));
+        } else if (titleCleaned) {
+            variantsSet.add(cleanText(`${brand} ${titleCleaned}`));
+            if (category) variantsSet.add(cleanText(`${category} ${titleCleaned}`));
+        }
+    }
+
+    // 3. Fallback jika masih kosong
+    if (variantsSet.size === 0) {
+        variantsSet.add(baseAnchor || 'produk');
+        if (mainSpecs) variantsSet.add(cleanText(`${baseAnchor} ${mainSpecs}`));
+    }
+
+    const result = Array.from(variantsSet).filter(v => v && v.length >= 2).slice(0, 3);
+    return result;
+}
+
+/**
  * Membersihkan string teks dari simbol aneh dan spasi berlebih
  * @param {string} str 
  * @returns {string}
@@ -112,9 +189,10 @@ function detectCategoryKey(category, textContext = '') {
  * Membangun query pencarian bertingkat dan daftar kata negatif
  * 
  * @param {object} productFingerprint - { brand, model, category, keySpecs, title }
- * @returns {{ tier1: string, tier2: string, tier3: string, negatives: Array<string> }}
+ * @param {object} [options={}] - { aiVariants?: Array<string> }
+ * @returns {{ tier1: string, tier2: string, tier3: string, semanticVariants: Array<string>, negatives: Array<string> }}
  */
-function buildQueries(productFingerprint) {
+function buildQueries(productFingerprint, options = {}) {
     const fp = (productFingerprint && typeof productFingerprint === 'object') ? productFingerprint : {};
 
     const brand = cleanText(fp.brand);
@@ -155,6 +233,11 @@ function buildQueries(productFingerprint) {
     if (!tier2) tier2 = tier1;
     if (!tier3) tier3 = tier2;
 
+    // Hasilkan variasi semantik (menggunakan AI variants jika ada, atau fallback deterministik) (ADR-12)
+    const semanticVariants = (Array.isArray(options.aiVariants) && options.aiVariants.length >= 2)
+        ? options.aiVariants.slice(0, 3)
+        : generateDeterministicVariants(fp);
+
     // Ambil negative terms berdasarkan kategori
     const catKey = detectCategoryKey(category, `${brand} ${model} ${fp.title || ''}`);
     const negatives = catKey && NEGATIVE_TERMS_BY_CATEGORY[catKey]
@@ -165,6 +248,7 @@ function buildQueries(productFingerprint) {
         tier1,
         tier2,
         tier3,
+        semanticVariants,
         negatives
     };
 }
@@ -174,6 +258,8 @@ if (typeof module !== 'undefined' && module.exports) {
         buildQueries,
         cleanText,
         cleanTitle,
+        generateDeterministicVariants,
+        SYNONYM_DICTIONARY,
         NEGATIVE_TERMS_BY_CATEGORY
     };
 }
@@ -182,6 +268,8 @@ if (typeof window !== 'undefined') {
         buildQueries,
         cleanText,
         cleanTitle,
+        generateDeterministicVariants,
+        SYNONYM_DICTIONARY,
         NEGATIVE_TERMS_BY_CATEGORY
     };
 }

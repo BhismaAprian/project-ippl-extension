@@ -125,6 +125,28 @@ it('keySpecs dalam bentuk String harus diuraikan dengan benar', () => {
     assert.ok(res.tier1.includes('ANC Wireless'));
 });
 
+// 6. Semantic Variants & Kamus Sinonim Deterministik (T4.13 / ADR-12)
+it('buildQueries harus menghasilkan semanticVariants 2-3 kueri dengan normalisasi ukuran dan sinonim', () => {
+    const kasurFp = {
+        brand: 'Central',
+        model: 'Deluxe',
+        category: 'kasur',
+        keySpecs: ['160x200']
+    };
+    const resKasur = buildQueries(kasurFp);
+    assert.ok(Array.isArray(resKasur.semanticVariants), 'semanticVariants harus array');
+    assert.ok(resKasur.semanticVariants.length >= 2 && resKasur.semanticVariants.length <= 3, 'harus berisi 2-3 variasi kueri');
+    
+    // Periksa apakah variasi ukuran 160x200 dikonversi ke Queen atau No 2
+    const hasQueenOrNo2 = resKasur.semanticVariants.some(v => v.includes('queen') || v.includes('no 2'));
+    assert.ok(hasQueenOrNo2, 'Harus memuat varian queen atau no 2');
+
+    // Uji penerimaan aiVariants jika disediakan oleh AIClient
+    const aiVariants = ['Central Deluxe Queen 160x200', 'Kasur Springbed Central No 2'];
+    const resWithAi = buildQueries(kasurFp, { aiVariants });
+    assert.deepStrictEqual(resWithAi.semanticVariants, aiVariants);
+});
+
 console.log(`\n========================================`);
 console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
 console.log(`========================================\n`);

@@ -11,8 +11,11 @@
  * - Smart Recommendations: Ekstraksi 3 produk serupa teratas langsung dari DOM (0 network calls)
  */
 
-if (!window.ShopeeAdapter) {
-    class ShopeeAdapter extends window.BaseAdapter {
+const BaseClass = (typeof window !== 'undefined' && window.BaseAdapter)
+    ? window.BaseAdapter
+    : (typeof require !== 'undefined' ? require('./base-adapter.js').BaseAdapter : class {});
+
+class ShopeeAdapter extends BaseClass {
         get marketplaceName() {
         return 'shopee';
     }
@@ -51,9 +54,11 @@ if (!window.ShopeeAdapter) {
         }
 
         const markers = window.PRODUCT_PAGE_MARKERS?.shopee || [
+            'script[type="text/mfe-initial-data"]',
             '[data-testid="product-title"]',
             '.product-briefing',
             'div.page-product',
+            '[class*="page-product"]',
             'meta[property="og:type"][content="product"]'
         ];
 
@@ -212,7 +217,9 @@ if (!window.ShopeeAdapter) {
                 }
 
                 // Fallback struktur alternatif Shopee MFE
-                const itemNode = pdpData?.item || root.initialState?.item?.items?.[0] || root.initialState?.item || null;
+                const itemsObj = root.initialState?.item?.items;
+                const firstItemFromObj = itemsObj ? (Array.isArray(itemsObj) ? itemsObj[0] : Object.values(itemsObj)[0]) : null;
+                const itemNode = pdpData?.item || firstItemFromObj || root.initialState?.item || null;
                 if (!itemNode && !pdpData) continue;
 
                 const reviewNode = pdpData?.product_review || itemNode?.item_rating || null;
@@ -1208,6 +1215,10 @@ if (!window.ShopeeAdapter) {
     }
 }
 
-// Bind ke window object
-window.ShopeeAdapter = ShopeeAdapter;
+// Bind ke window object & export UMD-Lite
+if (typeof window !== 'undefined') {
+    window.ShopeeAdapter = ShopeeAdapter;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { ShopeeAdapter };
 }

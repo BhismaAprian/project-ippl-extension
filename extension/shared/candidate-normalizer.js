@@ -150,10 +150,23 @@ function normalizeCandidate(raw, source, provenance) {
         || (raw.id && String(raw.id).trim())
         || null;
 
-    const imageUrl = (typeof raw.imageUrl === 'string' && raw.imageUrl.trim())
+    // Validasi URL gambar: wajib diawali http:// atau https:// (ADR-11 / T4.11 / CR-004B), selain itu set null
+    let imageUrl = null;
+    const rawImageUrl = (typeof raw.imageUrl === 'string' && raw.imageUrl.trim())
         || (typeof raw.image_url === 'string' && raw.image_url.trim())
         || (typeof raw.image === 'string' && raw.image.trim())
+        || (Array.isArray(raw.extras?.imageLinks) && typeof raw.extras.imageLinks[0] === 'string' && raw.extras.imageLinks[0].trim())
         || null;
+
+    if (rawImageUrl) {
+        let cleanImg = rawImageUrl.trim();
+        if (cleanImg.startsWith('//')) {
+            cleanImg = 'https:' + cleanImg;
+        }
+        if (/^https?:\/\//i.test(cleanImg)) {
+            imageUrl = cleanImg;
+        }
+    }
 
     const observedAt = (typeof raw.observedAt === 'string' && raw.observedAt.trim())
         || new Date().toISOString();

@@ -19,7 +19,8 @@ window.MESSAGES = {
 window.SUPPORTED_MARKETPLACES = [
     'shopee',
     'tokopedia',
-    'lazada'
+    'lazada',
+    'blibli'
 ];
 
 
@@ -27,5 +28,6 @@ window.SUPPORTED_MARKETPLACES = [
 window.URL_PATTERNS = {
     shopee: /-i\.\d+\.\d+/,
     tokopedia: /\/[a-z0-9-]+\/[a-z0-9-]+-[a-z0-9]+/,
-    lazada: /\/products\/[a-z0-9-]+-i\d+-s\d+/
+    lazada: /\/products\/[a-z0-9-]+-i\d+-s\d+/,
+    blibli: /\/p\/[a-z0-9-]+/
 };

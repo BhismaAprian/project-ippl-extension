@@ -48,7 +48,19 @@ class SearchClient {
      */
     extractPrice(text) {
         if (!text) return null;
-        const matches = text.matchAll(/(?:Rp|IDR)\s*([\d\.,]+)/gi);
+
+        // 1. Tangkap pola nominal Rupiah terstruktur: Rp 1.500.000 / Rp. 150.000
+        const structuredMatch = text.match(/(?:Rp\.?\s*)(\d{1,3}(?:[.,]\d{3})+)/i);
+        if (structuredMatch && structuredMatch[1]) {
+            const cleanNumber = structuredMatch[1].replace(/[.,]/g, '');
+            const num = parseInt(cleanNumber, 10);
+            if (!isNaN(num) && num >= 1000) {
+                return num;
+            }
+        }
+
+        // 2. Tangkap pola nominal Rupiah umum
+        const matches = text.matchAll(/(?:Rp|IDR)\.?\s*([\d\.,]+)/gi);
         const validPrices = [];
 
         for (const match of matches) {
@@ -191,8 +203,10 @@ class SearchClient {
                     type: "auto",
                     includeDomains: ["shopee.co.id", "tokopedia.com", "lazada.co.id", "blibli.com"],
                     contents: {
-                        text: { maxCharacters: 500 }
-                    }
+                        text: { maxCharacters: 800 },
+                        highlights: { numSentences: 2 }
+                    },
+                    extras: { imageLinks: 1 }
                 })
             });
         } catch (fetchError) {
@@ -223,19 +237,61 @@ class SearchClient {
             return [];
         }
 
-        // 3. Parsing Hasil (Kandidat tetap disimpan meski harga belum terdeteksi)
-        const rawCandidates = data.results.map(item => {
+        // 3. Parsing Hasil & Deduplikasi URL Kanonikal (ADR-12 / T4.14)
+        const seenUrls = new Set();
+        const rawCandidates = [];
+
+        for (const item of data.results) {
+            if (!item || !item.url) continue;
+            const canonUrl = canonicalizeUrl(item.url);
+            if (seenUrls.has(canonUrl)) continue;
+            seenUrls.add(canonUrl);
+
             const marketplace = this.getMarketplace(item.url);
             const snippet = item.text || item.snippet || "";
-            return {
+            const highlightsStr = Array.isArray(item.highlights)
+                ? item.highlights.join(' ')
+                : (typeof item.highlights === 'string' ? item.highlights : '');
+            const combinedText = `${snippet} ${highlightsStr}`.trim();
+
+            let price = null;
+            if (item.price !== undefined && item.price !== null) {
+                const parsePriceFn = typeof window !== 'undefined' && window.CandidateNormalizer
+                    ? window.CandidateNormalizer.parseCandidatePrice
+                    : ((v) => Number(v) || null);
+                price = parsePriceFn(item.price);
+            }
+            if (!price) {
+                price = this.extractPrice(combinedText);
+            }
+
+            const candidateImg = item.image
+                || (Array.isArray(item.extras?.imageLinks) && item.extras.imageLinks[0])
+                || item.extras?.image
+                || item.extras?.ogImage
+                || item.ogImage
+                || null;
+            let imageUrl = null;
+            if (typeof candidateImg === 'string') {
+                let cleanImg = candidateImg.trim();
+                if (cleanImg.startsWith('//')) cleanImg = 'https:' + cleanImg;
+                if (cleanImg.startsWith('http://')) cleanImg = 'https://' + cleanImg.slice(7);
+                if (/^https:\/\//i.test(cleanImg)) {
+                    imageUrl = cleanImg;
+                }
+            }
+
+            rawCandidates.push({
                 title: item.title || "Tanpa Judul",
                 url: item.url,
+                canonicalUrl: canonUrl,
                 snippet: snippet.length > 200 ? snippet.substring(0, 200) + "..." : snippet,
                 marketplace: marketplace,
+                imageUrl: imageUrl,
                 isDirectProduct: this.isDirectProduct(item.url, marketplace),
-                price: this.extractPrice(snippet)
-            };
-        });
+                price: price
+            });
+        }
 
         // 4. Strict Filter: Direct Product (PDP) & Relevansi Kategori Multi-Layer
         const candidates = rawCandidates.filter(c => {
@@ -255,4 +311,42 @@ class SearchClient {
     }
 }
 
-window.SearchClient = SearchClient;
+/**
+ * Deduplikasi dan kanonikalisasi URL (mengabaikan parameter tracking ?spm=, ?src=, ?extParam=)
+ * @param {string} url 
+ * @returns {string}
+ */
+function canonicalizeUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    try {
+        const u = new URL(url);
+        const trackingParams = ['spm', 'src', 'extparam', 'track', 'wh_pid', 'scm', 'laz_token', 'click_id'];
+        const toDelete = [];
+        for (const [k] of u.searchParams.entries()) {
+            const lowerK = k.toLowerCase();
+            if (lowerK.startsWith('utm_') || trackingParams.includes(lowerK)) {
+                toDelete.push(k);
+            }
+        }
+        for (const k of toDelete) {
+            u.searchParams.delete(k);
+        }
+        let pathname = u.pathname;
+        if (pathname.length > 1 && pathname.endsWith('/')) {
+            pathname = pathname.slice(0, -1);
+        }
+        const searchStr = u.searchParams.toString();
+        return u.origin + pathname + (searchStr ? '?' + searchStr : '');
+    } catch (e) {
+        return url.split('?')[0].replace(/\/+$/, '');
+    }
+}
+
+// UMD-Lite Pattern (ADR-02)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { SearchClient, canonicalizeUrl };
+}
+if (typeof window !== 'undefined') {
+    window.SearchClient = SearchClient;
+    window.canonicalizeUrl = canonicalizeUrl;
+}

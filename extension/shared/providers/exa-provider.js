@@ -83,7 +83,7 @@ class ExaProvider extends BaseProviderClass {
     }
 
     /**
-     * Helper: Ekstraksi nominal harga IDR dari cuplikan teks snippet
+     * Helper: Ekstraksi nominal harga IDR dari cuplikan teks snippet & highlights
      * @param {string} text 
      * @returns {number|null}
      */
@@ -96,8 +96,17 @@ class ExaProvider extends BaseProviderClass {
             return !isNaN(num) && num >= 1000 ? num : null;
         });
 
-        // Tangkap pola nominal Rupiah
-        const matches = text.matchAll(/(?:Rp|IDR)\s*([\d\.,]+)/gi);
+        // 1. Tangkap pola nominal Rupiah terstruktur: Rp 1.500.000 / Rp. 150.000
+        const structuredMatch = text.match(/(?:Rp\.?\s*)(\d{1,3}(?:[.,]\d{3})+)/i);
+        if (structuredMatch && structuredMatch[1]) {
+            const parsed = parsePriceFn(structuredMatch[1]);
+            if (parsed && parsed >= 1000) {
+                return parsed;
+            }
+        }
+
+        // 2. Tangkap pola nominal Rupiah umum (Rp / IDR)
+        const matches = text.matchAll(/(?:Rp|IDR)\.?\s*([\d\.,]+)/gi);
         for (const m of matches) {
             if (m && m[1]) {
                 const parsed = parsePriceFn(m[1]);
@@ -193,8 +202,10 @@ class ExaProvider extends BaseProviderClass {
                     type: 'auto',
                     includeDomains: includeDomains,
                     contents: {
-                        text: { maxCharacters: 500 }
-                    }
+                        text: { maxCharacters: 800 },
+                        highlights: { numSentences: 2 }
+                    },
+                    extras: { imageLinks: 1 }
                 })
             });
         } catch (netErr) {
@@ -238,7 +249,39 @@ class ExaProvider extends BaseProviderClass {
             }
 
             const snippet = item.text || item.snippet || '';
-            const price = this.extractPrice(snippet);
+            const highlightsStr = Array.isArray(item.highlights)
+                ? item.highlights.join(' ')
+                : (typeof item.highlights === 'string' ? item.highlights : '');
+            const combinedText = `${snippet} ${highlightsStr}`.trim();
+
+            let price = null;
+            if (item.price !== undefined && item.price !== null) {
+                const parsePriceFn = _normalizer?.parseCandidatePrice || ((val) => Number(val) || null);
+                price = parsePriceFn(item.price);
+            }
+            if (!price) {
+                price = this.extractPrice(combinedText);
+            }
+
+            // Ekstraksi Gambar dari metadata hasil Exa (ADR-11 / CR-004B)
+            let imageUrl = null;
+            const candidateImg = item.image
+                || (Array.isArray(item.extras?.imageLinks) && item.extras.imageLinks[0])
+                || item.extras?.image
+                || item.extras?.ogImage
+                || item.ogImage
+                || (item.extras?.openGraph && item.extras.openGraph['og:image'])
+                || (item.openGraph && item.openGraph.image)
+                || null;
+
+            if (typeof candidateImg === 'string') {
+                let cleanImg = candidateImg.trim();
+                if (cleanImg.startsWith('//')) cleanImg = 'https:' + cleanImg;
+                if (cleanImg.startsWith('http://')) cleanImg = 'https://' + cleanImg.slice(7);
+                if (/^https:\/\//i.test(cleanImg)) {
+                    imageUrl = cleanImg;
+                }
+            }
 
             pdpCandidates.push({
                 title: item.title || 'Tanpa Judul',
@@ -246,6 +289,7 @@ class ExaProvider extends BaseProviderClass {
                 snippet: snippet.length > 250 ? snippet.substring(0, 250) + '...' : snippet,
                 marketplace: classification.marketplace,
                 price: price,
+                imageUrl: imageUrl,
                 raw: item
             });
         }

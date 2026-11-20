@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Shopping Intelligence",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Sebelum checkout, cek dulu — hemat duit, nggak nyesel.",
     "permissions": [
         "activeTab",
@@ -16,8 +16,13 @@
         "https://shopee.co.id/search*",
         "https://*.tokopedia.com/*",
         "https://tokopedia.com/*",
+        "https://www.tokopedia.com/search*",
         "https://*.lazada.co.id/*",
         "https://lazada.co.id/*",
+        "https://www.lazada.co.id/catalog*",
+        "https://*.blibli.com/*",
+        "https://blibli.com/*",
+        "https://www.blibli.com/cari*",
         "https://api.exa.ai/*",
         "https://api.groq.com/*"
     ],
@@ -40,7 +45,9 @@
                 "https://*.tokopedia.com/*",
                 "https://tokopedia.com/*",
                 "https://*.lazada.co.id/*",
-                "https://lazada.co.id/*"
+                "https://lazada.co.id/*",
+                "https://*.blibli.com/*",
+                "https://blibli.com/*"
             ],
             "js": [
                 "shared/constant.js",
@@ -48,6 +55,7 @@
                 "adapters/shopee-adapter.js",
                 "adapters/tokopedia-adapter.js",
                 "adapters/lazada-adapter.js",
+                "adapters/blibli-adapter.js",
                 "shared/ai-client.js",
                 "content/marketplace-detector.js"
             ],
@@ -56,7 +64,13 @@
         {
             "matches": [
                 "https://shopee.co.id/search*",
-                "https://*.shopee.co.id/search*"
+                "https://*.shopee.co.id/search*",
+                "https://www.tokopedia.com/search*",
+                "https://*.tokopedia.com/search*",
+                "https://www.lazada.co.id/catalog*",
+                "https://*.lazada.co.id/catalog*",
+                "https://www.blibli.com/cari*",
+                "https://*.blibli.com/cari*"
             ],
             "js": [
                 "content/native-search-parser.js"

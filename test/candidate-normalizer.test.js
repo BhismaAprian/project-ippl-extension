@@ -138,6 +138,24 @@ it('parseCandidateRating harus menormalkan string atau angka ke rentang 0-5', ()
     assert.strictEqual(parseCandidateRating(null), null);
 });
 
+// 9. Validasi Image URL (T4.11 / ADR-11)
+it('normalizeCandidate harus memvalidasi imageUrl diawali http:// atau https://, selain itu null', () => {
+    const validHttp = normalizeCandidate({ title: 'A', price: 100000, url: 'https://tokopedia.com/a', imageUrl: 'http://img.com/a.jpg' }, 'tokopedia', 'native-assisted');
+    assert.strictEqual(validHttp.imageUrl, 'http://img.com/a.jpg');
+
+    const validHttps = normalizeCandidate({ title: 'B', price: 100000, url: 'https://tokopedia.com/b', imageUrl: 'https://img.com/b.png' }, 'tokopedia', 'native-assisted');
+    assert.strictEqual(validHttps.imageUrl, 'https://img.com/b.png');
+
+    const protocolRelative = normalizeCandidate({ title: 'C', price: 100000, url: 'https://tokopedia.com/c', imageUrl: '//img.com/c.png' }, 'tokopedia', 'native-assisted');
+    assert.strictEqual(protocolRelative.imageUrl, 'https://img.com/c.png');
+
+    const dataUri = normalizeCandidate({ title: 'D', price: 100000, url: 'https://tokopedia.com/d', imageUrl: 'data:image/png;base64,...' }, 'tokopedia', 'native-assisted');
+    assert.strictEqual(dataUri.imageUrl, null);
+
+    const relativePath = normalizeCandidate({ title: 'E', price: 100000, url: 'https://tokopedia.com/e', imageUrl: '/assets/thumb.jpg' }, 'tokopedia', 'native-assisted');
+    assert.strictEqual(relativePath.imageUrl, null);
+});
+
 console.log(`\n========================================`);
 console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
 console.log(`========================================\n`);

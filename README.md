@@ -1,90 +1,92 @@
-# 🧠 Shopping Intelligence
+# Shopping Intelligence — Chrome Extension
 
-> **"Before you buy, understand the deal."**
-
-**Shopping Intelligence** adalah Chrome Extension (Manifest V3) bertenaga AI yang menganalisis produk di Shopee secara *real-time*, mencari alternatif harga di marketplace lain, membandingkan spesifikasi, dan memberikan rekomendasi cerdas (Smart Deal Maker) langsung di dalam *popup* — tanpa perlu membuka tab baru.
-
-Proyek ini dikembangkan sebagai pemenuhan Tugas Besar (UTS) mata kuliah IPPL.
+> **Panduan Singkat Proyek & Dokumentasi Pengembang**  
+> Untuk spesifikasi teknis lengkap, silakan merujuk ke dokumen induk: **[SPEC.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/SPEC.md)**.
 
 ---
 
-## 🚀 Masalah yang Diselesaikan (The Problem)
-Belanja online seringkali melelahkan. Pengguna mengalami *"Tab Fatigue"* karena harus membuka Shopee, Tokopedia, dan Lazada hanya untuk mengecek satu barang. Selain itu, judul produk yang berantakan seringkali menyembunyikan perbedaan spesifikasi (misal: RAM 8GB vs 16GB), sehingga pengguna sering tertipu harga murah dengan spesifikasi rendah.
+## 1. Apa Itu Shopping Intelligence?
 
-## 💡 Solusi (The Solution)
-Shopping Intelligence bertindak sebagai **AI Shopping Layer**. Dengan satu klik:
-1. **AI membaca spesifikasi produk** dari halaman Shopee.
-2. **AI mencari produk yang persis sama** di marketplace lain (Tokopedia, Lazada, Blibli).
-3. **AI membandingkan** mana yang benar-benar "Best Value" (layak dibeli) dan mana yang sekadar "Cheapest" (murah tapi ada *trade-off*).
+**Shopping Intelligence** adalah ekstensi peramban Google Chrome berbasis **Manifest V3** yang berfungsi sebagai asisten evaluasi belanja daring secara langsung di sisi pengguna. Ekstensi ini aktif mendampingi pengguna saat menavigasi marketplace e-commerce utama di Indonesia (Shopee, Tokopedia, Lazada, dan Blibli) melalui antarmuka persisten **Chrome Side Panel**.
+
+Sistem menganalisis data internal produk, mengaudit ulasan pembeli, memverifikasi konsistensi klaim garansi, dan menemukan penawaran alternatif lintas platform e-commerce secara deterministik, menghasilkan skor kelayakan terpadu (**Deal Score**) dengan rekomendasi tindakan: **BUY**, **CHECK**, atau **WAIT**.
 
 ---
 
-## ✨ Fitur Utama (Stage 1 MVP)
+## 2. Struktur Spesifikasi Proyek (Spec-Driven Development)
 
-- **🛒 Shopee Product Extraction:** Mengambil data DOM (Judul, Harga, Rating, Seller, Spesifikasi) secara akurat menggunakan Adapter Pattern.
-- **🧠 AI Product Understanding (Groq):** Menggunakan Groq API (Llama 3) untuk mengekstrak data mentah menjadi JSON terstruktur dan membuat *search query* yang presisi.
-- **🔎 Neural Cross-Market Search (Exa):** Menggunakan Exa API (Neural Search) untuk mencari alternatif produk dengan filter domain (Shopee, Tokopedia, Lazada, Blibli).
-- **⚖️ Smart Deal Maker:** Logika deterministik dan AI Reasoning yang mengategorikan hasil menjadi:
-  - 🏆 **Best Value:** Spesifikasi cocok, brand terpercaya, harga masuk akal (dengan alasan dari AI).
-  - 💰 **Cheapest Option:** Harga termurah mutlak (dengan *warning* jika toko kurang dikenal).
-- **⚡ Caching System:** Menyimpan hasil analisis di `chrome.storage.local` berdasarkan URL tab, menghemat kuota API dan membuat loading instan saat popup dibuka kembali.
-- **🎨 Playful Geometric UI:** Desain antarmuka modern, *tactile*, dan berani (terinspirasi Memphis Group 80-an) untuk pengalaman pengguna yang menyenangkan.
+Pengembangan proyek ini dikendalikan oleh dokumen spesifikasi master di direktori utama:
+
+- **[SPEC.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/SPEC.md):** Spesifikasi sistem lengkap (14 seksi master: FR-01 s/d FR-27, NFR-01 s/d NFR-22, ADR-01 s/d ADR-08, dan Data Contracts).
+- **[ARCHITECTURE.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/ARCHITECTURE.md):** Arsitektur teknis mendalam, diagram alur IPC, siklus hidup tab *Brief Active Window*, dan *Provider Registry*.
+- **[TASKS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/TASKS.md):** Rincian pekerjaan per fase (Phase 1–3 DONE, Phase 4–5 TODO) beserta perintah pembuktian otomatis (*Proof Command*).
+- **[AGENTS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/AGENTS.md):** Aturan operasional, hierarki otoritas (SPEC > ARCHITECTURE > TASKS), dan protokol sesi pengembangan.
 
 ---
 
-## 🛠️ Tech Stack & Architecture
+## 3. Cara Instalasi (Development Mode)
 
-| Lapisan | Teknologi | Peran |
-| :--- | :--- | :--- |
-| **Platform** | Chrome Extension (Manifest V3) | Runtime extension & permission model |
-| **Frontend** | Vanilla JavaScript, HTML5, CSS3 | Logika UI dan interaksi (tanpa framework) |
-| **AI / LLM** | [Groq API](https://groq.com/) (`openai/gpt-oss-120b`) | Product Understanding & Deal Evaluation |
-| **Search** | [Exa API](https://exa.ai/) (Neural Search) | Cross-market discovery |
-| **Storage** | `chrome.storage.local` | Caching hasil analisis |
+Ekstensi ini dibangun menggunakan Vanilla JavaScript tanpa proses kompilasi bundler tambahan (*zero-build step*):
 
-### Alur Data (Data Flow)
-```text
-[User Buka Shopee] 
-       ↓
-[Content Script: Extract DOM] (Adapter Pattern)
-       ↓
-[Popup: Kirim ke Groq AI] → (Spesifikasi & Search Query)
-       ↓
-[Popup: Query ke Exa API] → (Cari Tokped/Lazada/Blibli)
-       ↓
-[Popup: Groq Evaluasi] → (Tentukan Best Value vs Cheapest)
-       ↓
-[Render UI "Playful Geometric"]
+1. Buka peramban Google Chrome (versi 110 atau lebih baru).
+2. Arahkan peramban ke halaman pengelolaan ekstensi: `chrome://extensions/`.
+3. Aktifkan opsi **Developer mode** pada sudut kanan atas peramban.
+4. Klik tombol **Load unpacked** pada sudut kiri atas.
+5. Pilih folder direktori **`extension`** dari repositori ini (`/path/to/project-ippl-extension/extension`).
+6. Ekstensi **Shopping Intelligence** siap digunakan pada toolbar browser.
+
+---
+
+## 4. Cara Menjalankan In-House Scraping Engine (Backend Mandiri)
+
+Untuk pencarian produk yang mandiri, efisien, dan tidak bergantung pada pembukaan tab peramban visual, jalankan backend scraping internal:
+
+```bash
+# Masuk ke direktori backend dan pasang dependensi
+cd backend
+npm install
+
+# Jalankan server API pencarian (berjalan di port 3000)
+npm start
+```
+
+Server aktif di `http://localhost:3000`. Ekstensi akan secara otomatis mengarahkan pencarian produk ke backend ini terlebih dahulu. Jika server backend tidak sedang dijalankan, ekstensi secara otomatis beralih ke metode pencarian tab peramban.
+
+Untuk menjalankan pengujian unit backend:
+```bash
+cd backend
+npm test
 ```
 
 ---
 
-## ⚙️ Cara Instalasi (Local Development)
+## 5. Cara Menjalankan Pengujian Otomatis
 
-1. **Clone Repository**
-   ```bash
-   git clone https://github.com/BhismaAprian/project-ippl-extension.git
-   cd project-ippl-extension
-   ```
+Pengujian dijalankan langsung menggunakan test runner bawaan Node.js tanpa memerlukan dependensi npm tambahan:
 
-2. **Dapatkan API Keys (Gratis)**
-   - Dapatkan Groq API Key di [console.groq.com](https://console.groq.com/)
-   - Dapatkan Exa API Key di [exa.ai](https://exa.ai/)
+```bash
+# Menjalankan seluruh test suite verifikasi Phase 1-3 (22/22 Tests PASS)
+node test/verify-fixes.test.js
 
-3. **Konfigurasi API Key**
-   - Buka file `extension/shared/ai-client.js` dan masukkan Groq API Key Anda.
-   - Buka file `extension/shared/search-client.js` dan masukkan Exa API Key Anda.
-   *(Catatan: Saat ini API Key di-hardcode untuk keperluan demo UTS. Di masa depan, API Key akan disimpan secara aman via `chrome.storage`).*
+# Menjalankan seluruh suite pengujian unit modular
+node --test test/*.test.js
 
-4. **Load Extension ke Chrome**
-   - Buka Chrome dan ketik `chrome://extensions/`
-   - Aktifkan **Developer mode** (pojok kanan atas).
-   - Klik **Load unpacked** dan pilih folder `extension/`.
-
-5. **Mulai Gunakan**
-   - Buka salah satu halaman produk di Shopee.
-   - Klik ikon Shopping Intelligence di toolbar Chrome Anda!
+# Menjalankan pengujian komponen spesifik
+node --test test/candidate-normalizer.test.js
+node --test test/native-search-protocol.test.js
+node --test test/provider-registry.test.js
+node --test test/pdp-classifier.test.js
+node --test test/shopee-manifest.test.js
+node --test test/query-builder.test.js
+node --test test/exa-provider.test.js
+node --test test/exa-integration.test.js
+```
 
 ---
 
+## 6. Cara Berkontribusi
 
+1. Baca dan pahami aturan pada **[AGENTS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/AGENTS.md)** sebelum melakukan modifikasi kode.
+2. Seluruh perubahan wajib mengacu pada ID pekerjaan di **[TASKS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/TASKS.md)**.
+3. Perubahan terhadap spesifikasi **[SPEC.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/SPEC.md)** wajib melalui prosedur *Change Request* di `docs/changes/`.
+4. Pastikan seluruh pengujian pada `node test/verify-fixes.test.js` dan `node --test test/*.test.js` berstatus **PASS** sebelum mengajukan *Pull Request*.
