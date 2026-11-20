@@ -195,6 +195,10 @@ CRITICAL GATEKEEPER RULES:
    - "DOWNGRADE": lower specs (e.g., 64GB vs 128GB, thinner foam).
    - "DIFFERENT": different model, variant, or minor specification divergence.
 5. "others": Include up to 10 valid alternatives that match the category. For each, specify title, url, price, spec_status, and reason.
+6. STRICT LANGUAGE & CONCISENESS RULE (NFR-16):
+   - The "reason" field for "best_value", "cheapest", and all items in "others" MUST be written strictly in concise Indonesian (Bahasa Indonesia) with a MAXIMUM of 10 words.
+   - Example valid reasons: "Tebal 30cm + pocket spring, bonus bantal", "Garansi resmi 10 tahun, busa densitas tinggi", "Harga termurah, ukuran pas 160x200".
+   - You are STRICTLY FORBIDDEN from writing the "reason" field in English.
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -203,14 +207,14 @@ Return ONLY a valid JSON object matching this schema:
     "url": "",
     "price": 0,
     "spec_status": "EXACT",
-    "reason": ""
+    "reason": "Alasan singkat Bahasa Indonesia maksimal 10 kata"
   },
   "cheapest": {
     "title": "",
     "url": "",
     "price": 0,
     "spec_status": "EXACT",
-    "reason": ""
+    "reason": "Alasan singkat Bahasa Indonesia maksimal 10 kata"
   },
   "others": [
     {
@@ -218,7 +222,7 @@ Return ONLY a valid JSON object matching this schema:
       "url": "",
       "price": 0,
       "spec_status": "EXACT",
-      "reason": ""
+      "reason": "Alasan singkat Bahasa Indonesia maksimal 10 kata"
     }
   ]
 }`;
