@@ -48,7 +48,19 @@ class SearchClient {
      */
     extractPrice(text) {
         if (!text) return null;
-        const matches = text.matchAll(/(?:Rp|IDR)\s*([\d\.,]+)/gi);
+
+        // 1. Tangkap pola nominal Rupiah terstruktur: Rp 1.500.000 / Rp. 150.000
+        const structuredMatch = text.match(/(?:Rp\.?\s*)(\d{1,3}(?:[.,]\d{3})+)/i);
+        if (structuredMatch && structuredMatch[1]) {
+            const cleanNumber = structuredMatch[1].replace(/[.,]/g, '');
+            const num = parseInt(cleanNumber, 10);
+            if (!isNaN(num) && num >= 1000) {
+                return num;
+            }
+        }
+
+        // 2. Tangkap pola nominal Rupiah umum
+        const matches = text.matchAll(/(?:Rp|IDR)\.?\s*([\d\.,]+)/gi);
         const validPrices = [];
 
         for (const match of matches) {
@@ -191,8 +203,10 @@ class SearchClient {
                     type: "auto",
                     includeDomains: ["shopee.co.id", "tokopedia.com", "lazada.co.id", "blibli.com"],
                     contents: {
-                        text: { maxCharacters: 500 }
-                    }
+                        text: { maxCharacters: 800 },
+                        highlights: { numSentences: 2 }
+                    },
+                    extras: { imageLinks: 1 }
                 })
             });
         } catch (fetchError) {
@@ -235,10 +249,36 @@ class SearchClient {
 
             const marketplace = this.getMarketplace(item.url);
             const snippet = item.text || item.snippet || "";
-            const candidateImg = item.image || item.extras?.image || item.extras?.ogImage || item.ogImage || null;
+            const highlightsStr = Array.isArray(item.highlights)
+                ? item.highlights.join(' ')
+                : (typeof item.highlights === 'string' ? item.highlights : '');
+            const combinedText = `${snippet} ${highlightsStr}`.trim();
+
+            let price = null;
+            if (item.price !== undefined && item.price !== null) {
+                const parsePriceFn = typeof window !== 'undefined' && window.CandidateNormalizer
+                    ? window.CandidateNormalizer.parseCandidatePrice
+                    : ((v) => Number(v) || null);
+                price = parsePriceFn(item.price);
+            }
+            if (!price) {
+                price = this.extractPrice(combinedText);
+            }
+
+            const candidateImg = item.image
+                || (Array.isArray(item.extras?.imageLinks) && item.extras.imageLinks[0])
+                || item.extras?.image
+                || item.extras?.ogImage
+                || item.ogImage
+                || null;
             let imageUrl = null;
-            if (typeof candidateImg === 'string' && /^https?:\/\//i.test(candidateImg.trim())) {
-                imageUrl = candidateImg.trim();
+            if (typeof candidateImg === 'string') {
+                let cleanImg = candidateImg.trim();
+                if (cleanImg.startsWith('//')) cleanImg = 'https:' + cleanImg;
+                if (cleanImg.startsWith('http://')) cleanImg = 'https://' + cleanImg.slice(7);
+                if (/^https:\/\//i.test(cleanImg)) {
+                    imageUrl = cleanImg;
+                }
             }
 
             rawCandidates.push({
@@ -249,7 +289,7 @@ class SearchClient {
                 marketplace: marketplace,
                 imageUrl: imageUrl,
                 isDirectProduct: this.isDirectProduct(item.url, marketplace),
-                price: this.extractPrice(snippet)
+                price: price
             });
         }
 

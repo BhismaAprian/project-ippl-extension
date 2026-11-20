@@ -150,11 +150,12 @@ function normalizeCandidate(raw, source, provenance) {
         || (raw.id && String(raw.id).trim())
         || null;
 
-    // Validasi URL gambar: wajib diawali http:// atau https:// (ADR-11 / T4.11), selain itu set null
+    // Validasi URL gambar: wajib diawali http:// atau https:// (ADR-11 / T4.11 / CR-004B), selain itu set null
     let imageUrl = null;
     const rawImageUrl = (typeof raw.imageUrl === 'string' && raw.imageUrl.trim())
         || (typeof raw.image_url === 'string' && raw.image_url.trim())
         || (typeof raw.image === 'string' && raw.image.trim())
+        || (Array.isArray(raw.extras?.imageLinks) && typeof raw.extras.imageLinks[0] === 'string' && raw.extras.imageLinks[0].trim())
         || null;
 
     if (rawImageUrl) {

@@ -101,18 +101,53 @@ class TokopediaAdapter extends BaseClass {
         };
 
         if (typeof document !== 'undefined') {
+            // Helper untuk mencari objek tipe Product pada JSON-LD
+            const findProduct = (node) => {
+                if (!node) return null;
+                if (Array.isArray(node)) {
+                    for (const item of node) {
+                        const found = findProduct(item);
+                        if (found) return found;
+                    }
+                    return null;
+                }
+                if (node['@graph'] && Array.isArray(node['@graph'])) {
+                    return findProduct(node['@graph']);
+                }
+                const t = node['@type'];
+                if (t === 'Product' || t === 'https://schema.org/Product' || (Array.isArray(t) && t.includes('Product'))) {
+                    return node;
+                }
+                return null;
+            };
+
             // --- A. Ekstraksi dari JSON-LD (Schema.org) ---
             const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
             for (const script of jsonLdScripts) {
                 try {
-                    const data = JSON.parse(script.textContent);
-                    if (data['@type'] === 'Product' || data['@type'] === 'https://schema.org/Product') {
+                    const parsed = JSON.parse(script.textContent);
+                    const data = findProduct(parsed);
+                    if (data) {
                         productData.title = data.name || productData.title;
-                        productData.imageUrl = Array.isArray(data.image) ? data.image[0] : data.image;
+
+                        if (data.image) {
+                            const rawImg = Array.isArray(data.image)
+                                ? data.image[0]
+                                : (typeof data.image === 'object' ? data.image.url : data.image);
+                            if (typeof rawImg === 'string' && rawImg.trim()) {
+                                let cImg = rawImg.trim();
+                                if (cImg.startsWith('//')) cImg = 'https:' + cImg;
+                                if (/^https?:\/\//i.test(cImg)) productData.imageUrl = cImg;
+                            }
+                        }
 
                         if (data.offers) {
                             const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
-                            productData.price = parseFloat(offer.price || offer.lowPrice);
+                            const pRaw = offer.price || offer.lowPrice;
+                            if (pRaw !== undefined && pRaw !== null) {
+                                const parsedP = parseFloat(pRaw);
+                                if (!isNaN(parsedP) && parsedP > 0) productData.price = parsedP;
+                            }
                             productData.currency = offer.priceCurrency || 'IDR';
                         }
 
@@ -136,12 +171,23 @@ class TokopediaAdapter extends BaseClass {
             }
 
             if (!productData.imageUrl) {
-                productData.imageUrl = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+                const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute('content')
+                    || document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content')
+                    || document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+                if (ogImg && typeof ogImg === 'string' && ogImg.trim()) {
+                    let cImg = ogImg.trim();
+                    if (cImg.startsWith('//')) cImg = 'https:' + cImg;
+                    if (/^https?:\/\//i.test(cImg)) productData.imageUrl = cImg;
+                }
             }
 
             if (!productData.price) {
-                const priceMeta = document.querySelector('meta[property="product:price:amount"]')?.getAttribute('content');
-                if (priceMeta) productData.price = parseFloat(priceMeta);
+                const priceMeta = document.querySelector('meta[property="product:price:amount"]')?.getAttribute('content')
+                    || document.querySelector('meta[property="og:price:amount"]')?.getAttribute('content');
+                if (priceMeta) {
+                    const parsedP = parseFloat(priceMeta);
+                    if (!isNaN(parsedP) && parsedP > 0) productData.price = parsedP;
+                }
             }
 
             // --- C. Fallback ke Direct DOM Selectors ---

@@ -80,25 +80,53 @@ class LazadaAdapter extends BaseClass {
 
         // --- Layer 1: Schema.org JSON-LD (@type: Product) ---
         if (typeof document !== 'undefined') {
+            const findProduct = (node) => {
+                if (!node) return null;
+                if (Array.isArray(node)) {
+                    for (const item of node) {
+                        const found = findProduct(item);
+                        if (found) return found;
+                    }
+                    return null;
+                }
+                if (node['@graph'] && Array.isArray(node['@graph'])) {
+                    return findProduct(node['@graph']);
+                }
+                const t = node['@type'];
+                if (t === 'Product' || t === 'https://schema.org/Product' || (Array.isArray(t) && t.includes('Product'))) {
+                    return node;
+                }
+                return null;
+            };
+
             const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
             for (const script of jsonLdScripts) {
                 try {
                     const text = script.textContent?.trim();
                     if (!text) continue;
-                    const data = JSON.parse(text);
-                    if (data['@type'] === 'Product' || data['@type'] === 'https://schema.org/Product') {
+                    const parsed = JSON.parse(text);
+                    const data = findProduct(parsed);
+                    if (data) {
                         if (data.name) productData.title = String(data.name).trim();
                         if (data.description) productData.description = String(data.description).trim();
                         if (data.image) {
-                            productData.imageUrl = Array.isArray(data.image) ? data.image[0] : data.image;
+                            const rawImg = Array.isArray(data.image)
+                                ? data.image[0]
+                                : (typeof data.image === 'object' ? data.image.url : data.image);
+                            if (typeof rawImg === 'string' && rawImg.trim()) {
+                                let cImg = rawImg.trim();
+                                if (cImg.startsWith('//')) cImg = 'https:' + cImg;
+                                if (/^https?:\/\//i.test(cImg)) productData.imageUrl = cImg;
+                            }
                         }
                         if (data.brand) {
                             productData.brand = typeof data.brand === 'object' ? (data.brand.name || null) : String(data.brand);
                         }
                         if (data.offers) {
                             const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
-                            if (offer.price !== undefined && offer.price !== null) {
-                                const parsedP = parseFloat(offer.price);
+                            const pRaw = offer.price !== undefined ? offer.price : offer.lowPrice;
+                            if (pRaw !== undefined && pRaw !== null) {
+                                const parsedP = parseFloat(pRaw);
                                 if (!isNaN(parsedP) && parsedP > 0) productData.price = Math.round(parsedP);
                             }
                             if (offer.priceCurrency) productData.currency = offer.priceCurrency;
@@ -122,7 +150,23 @@ class LazadaAdapter extends BaseClass {
             }
 
             if (!productData.imageUrl) {
-                productData.imageUrl = document.querySelector('meta[property="og:image"]')?.getAttribute('content') || null;
+                const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute('content')
+                    || document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content')
+                    || document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+                if (ogImg && typeof ogImg === 'string' && ogImg.trim()) {
+                    let cImg = ogImg.trim();
+                    if (cImg.startsWith('//')) cImg = 'https:' + cImg;
+                    if (/^https?:\/\//i.test(cImg)) productData.imageUrl = cImg;
+                }
+            }
+
+            if (!productData.price) {
+                const priceMeta = document.querySelector('meta[property="product:price:amount"]')?.getAttribute('content')
+                    || document.querySelector('meta[property="og:price:amount"]')?.getAttribute('content');
+                if (priceMeta) {
+                    const parsedP = parseFloat(priceMeta);
+                    if (!isNaN(parsedP) && parsedP > 0) productData.price = Math.round(parsedP);
+                }
             }
 
             if (!productData.description) {
