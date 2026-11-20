@@ -141,6 +141,78 @@ async function runTests() {
         assert.strictEqual(collected[0].title, 'Shopee Candidate');
     });
 
+    // 4. Pencarian Stratified & Scoped Fallback per Marketplace (T4.14 / ADR-12)
+    await itAsync('searchStratified harus membagi kuota kandidat dan memicu Scoped Fallback Exa pada marketplace terkendala', async () => {
+        const registry = new ProviderRegistry();
+
+        // Native Shopee: 4 kandidat
+        const mockShopee = {
+            search: async () => [
+                { title: 'Shopee 1', price: 100000, url: 'https://shopee.co.id/item-1' },
+                { title: 'Shopee 2', price: 100000, url: 'https://shopee.co.id/item-2' },
+                { title: 'Shopee 3', price: 100000, url: 'https://shopee.co.id/item-3' },
+                { title: 'Shopee 4', price: 100000, url: 'https://shopee.co.id/item-4' }
+            ]
+        };
+        // Native Lazada: BLOCKED (0 kandidat)
+        const mockLazada = {
+            search: async () => {
+                const err = new Error('CAPTCHA');
+                err.status = 'BLOCKED';
+                throw err;
+            }
+        };
+
+        registry.registerProvider(new ShopeeNativeProvider(null, { protocolInstance: mockShopee }));
+        registry.registerProvider(new LazadaNativeProvider(null, { protocolInstance: mockLazada }));
+
+        // Mock Exa Provider untuk Scoped Fallback
+        const scopedCalls = [];
+        const mockExa = {
+            getName: () => 'exa',
+            getPriority: () => 5,
+            isAvailable: async () => true,
+            search: async (query, options) => {
+                scopedCalls.push({ query, includeDomains: options.includeDomains });
+                return [
+                    { title: 'Lazada Scoped 1', price: 105000, url: 'https://www.lazada.co.id/products/item-10.html' },
+                    { title: 'Lazada Scoped 2', price: 106000, url: 'https://www.lazada.co.id/products/item-11.html' }
+                ];
+            }
+        };
+        registry.registerProvider(mockExa);
+
+        const results = await registry.searchStratified('laptop asus', {
+            targetMarketplaces: ['shopee', 'lazada'],
+            minCandidatesPerPlatform: 4
+        });
+
+        // Verifikasi hasil terkumpul dari shopee dan lazada
+        assert.ok(results.length >= 6);
+        const shopeeItems = results.filter(r => r.url.includes('shopee.co.id'));
+        const lazadaItems = results.filter(r => r.url.includes('lazada.co.id'));
+
+        assert.strictEqual(shopeeItems.length, 4, 'Shopee harus menyumbang 4 kandidat');
+        assert.strictEqual(lazadaItems.length, 2, 'Lazada harus menyumbang 2 kandidat dari Scoped Fallback');
+
+        // Pastikan Scoped Fallback dikunci ke domain lazada.co.id
+        assert.strictEqual(scopedCalls.length, 1);
+        assert.deepStrictEqual(scopedCalls[0].includeDomains, ['lazada.co.id']);
+    });
+
+    // 5. Deduplikasi Kanonikal URL Tracking Parameters (T4.14 / ADR-12)
+    it('canonicalizeUrl harus membuang parameter tracking (?spm=, ?src=, ?extParam=) untuk mencegah duplikasi', () => {
+        const { canonicalizeUrl } = require('../extension/shared/provider-registry.js');
+
+        const lazadaTracked = 'https://www.lazada.co.id/products/item-1.html?spm=a2o4j.searchlist.list.1&click_id=xyz';
+        const lazadaClean = 'https://www.lazada.co.id/products/item-1.html';
+        assert.strictEqual(canonicalizeUrl(lazadaTracked), lazadaClean);
+
+        const tokpedTracked = 'https://www.tokopedia.com/toko/produk-1?src=topads&extParam=whid%3D123&utm_source=google';
+        const tokpedClean = 'https://www.tokopedia.com/toko/produk-1';
+        assert.strictEqual(canonicalizeUrl(tokpedTracked), tokpedClean);
+    });
+
     console.log(`\n========================================`);
     console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
     console.log(`========================================\n`);
