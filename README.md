@@ -37,7 +37,30 @@ Ekstensi ini dibangun menggunakan Vanilla JavaScript tanpa proses kompilasi bund
 
 ---
 
-## 4. Cara Menjalankan Pengujian Otomatis
+## 4. Cara Menjalankan In-House Scraping Engine (Backend Mandiri)
+
+Untuk pencarian produk yang mandiri, efisien, dan tidak bergantung pada pembukaan tab peramban visual, jalankan backend scraping internal:
+
+```bash
+# Masuk ke direktori backend dan pasang dependensi
+cd backend
+npm install
+
+# Jalankan server API pencarian (berjalan di port 3000)
+npm start
+```
+
+Server aktif di `http://localhost:3000`. Ekstensi akan secara otomatis mengarahkan pencarian produk ke backend ini terlebih dahulu. Jika server backend tidak sedang dijalankan, ekstensi secara otomatis beralih ke metode pencarian tab peramban.
+
+Untuk menjalankan pengujian unit backend:
+```bash
+cd backend
+npm test
+```
+
+---
+
+## 5. Cara Menjalankan Pengujian Otomatis
 
 Pengujian dijalankan langsung menggunakan test runner bawaan Node.js tanpa memerlukan dependensi npm tambahan:
 
@@ -61,7 +84,7 @@ node --test test/exa-integration.test.js
 
 ---
 
-## 5. Cara Berkontribusi
+## 6. Cara Berkontribusi
 
 1. Baca dan pahami aturan pada **[AGENTS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/AGENTS.md)** sebelum melakukan modifikasi kode.
 2. Seluruh perubahan wajib mengacu pada ID pekerjaan di **[TASKS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/TASKS.md)**.
