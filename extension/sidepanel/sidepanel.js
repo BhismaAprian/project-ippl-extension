@@ -277,7 +277,7 @@ function cacheKeyFor(tab) {
 function formatPrice(price, currency = 'IDR') {
     if (price === null || price === undefined || price === '') return '-';
     const value = Number(price);
-    if (isNaN(value)) return '-';
+    if (isNaN(value) || value <= 0) return '-';
     try {
         return new Intl.NumberFormat('id-ID', {
             style: 'currency',
@@ -785,11 +785,11 @@ function renderSimilarRecs(recs = []) {
  * Mendukung Playful Geometric Card & Fallback Deterministik saat AI Groq offline
  */
 const specMap = {
-    EXACT: { cls: 'green', text: 'Spec Cocok ✅' },
-    UPGRADE: { cls: 'blue', text: 'Spec Lebih Tinggi ⬆️' },
-    DOWNGRADE: { cls: 'red', text: 'Spec Lebih Rendah ⬇️' },
+    EXACT: { cls: 'green', text: 'Cocok ✅' },
+    UPGRADE: { cls: 'blue', text: 'Spec Naik ⬆️' },
+    DOWNGRADE: { cls: 'red', text: 'Spec Turun ⬇️' },
     DIFFERENT: { cls: 'yellow', text: 'Spec Beda ⚠️' },
-    UNKNOWN: { cls: 'gray', text: 'Spec Belum Dicek ❓' }
+    UNKNOWN: { cls: 'gray', text: 'Belum Dicek ❓' }
 };
 
 /**
@@ -822,6 +822,60 @@ function balanceByMarketplace(items) {
     return result;
 }
 
+const PRODUCT_FALLBACK_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`;
+
+/**
+ * Prioritaskan kandidat yang memiliki harga valid (>= 100) dan imageUrl !== null (CR-004B)
+ */
+function prioritizeCandidates(candidates) {
+    if (!Array.isArray(candidates)) return [];
+    return [...candidates].sort((a, b) => {
+        const aPrice = (a && a.price && a.price >= 100) ? 1 : 0;
+        const bPrice = (b && b.price && b.price >= 100) ? 1 : 0;
+        if (aPrice !== bPrice) return bPrice - aPrice;
+
+        const aImg = (a && a.imageUrl) ? 1 : 0;
+        const bImg = (b && b.imageUrl) ? 1 : 0;
+        if (aImg !== bImg) return bImg - aImg;
+
+        return (a?.price || 0) - (b?.price || 0);
+    });
+}
+
+/**
+ * Hubungkan kandidat dari evaluasi AI dengan kandidat hasil pencarian agar gambar, harga, dan marketplace terisi penuh
+ */
+function enrichFromSearchResults(item, searchResults) {
+    if (!item) return item;
+    const matched = searchResults.find(s => {
+        if (item.url && s.url) {
+            if (item.url === s.url) return true;
+            try {
+                const u1 = new URL(item.url);
+                const u2 = new URL(s.url);
+                if (u1.hostname === u2.hostname && u1.pathname === u2.pathname) return true;
+            } catch (e) {}
+        }
+        if (item.title && s.title) {
+            const t1 = item.title.trim().toLowerCase();
+            const t2 = s.title.trim().toLowerCase();
+            if (t1 === t2 || t1.includes(t2) || t2.includes(t1)) return true;
+        }
+        return false;
+    });
+
+    if (matched) {
+        if (!item.imageUrl && matched.imageUrl) item.imageUrl = matched.imageUrl;
+        if (!item.marketplace && matched.marketplace) item.marketplace = matched.marketplace;
+        if ((!item.price || item.price < 100) && (matched.price && matched.price >= 100)) {
+            item.price = matched.price;
+        }
+        if (!item.url && matched.url) item.url = matched.url;
+        if (!item.title && matched.title) item.title = matched.title;
+    }
+    return item;
+}
+
 function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 0) {
     hide(els.crossMarketLoading);
 
@@ -843,8 +897,17 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
     hide(els.crossMarketEmpty);
 
     // Helper untuk render 1 kartu deal highlight (Best Value / Cheapest)
+    // Susun hierarki visual 4 elemen: Gambar + Lencana, Judul (maks 2 baris), Harga tebal + Selisih hemat, 1 baris catatan
     const renderDealCard = (container, dealType, kindBadge, candidate, reason, specStatus) => {
         if (!container || !candidate || !candidate.title) {
+            hide(container);
+            return;
+        }
+
+        // Larangan keras menampilkan Rp 0 pada kartu utama (Best Value / Cheapest)
+        const priceNum = candidate.price || 0;
+        const hasValidPrice = priceNum >= 100;
+        if (!hasValidPrice) {
             hide(container);
             return;
         }
@@ -852,17 +915,15 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
         const market = getMarketplaceBadge(
             candidate.marketplace || (candidate.url ? new window.SearchClient().getMarketplace(candidate.url) : 'Marketplace')
         );
-        const priceNum = candidate.price || 0;
         const savingsText = (originalPrice > 0 && priceNum > 0 && priceNum < originalPrice)
             ? `Hemat Rp ${(originalPrice - priceNum).toLocaleString('id-ID')}`
             : null;
 
         const specInfo = specMap[specStatus || candidate.spec_status || candidate.specStatus] || null;
 
-        const fallbackIcon = '📦';
         const imgHtml = candidate.imageUrl
-            ? `<img src="${candidate.imageUrl}" alt="${candidate.title || 'Produk'}" class="deal-card-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="deal-card-thumb-placeholder" style="display:none;">${fallbackIcon}</div>`
-            : `<div class="deal-card-thumb-placeholder">${fallbackIcon}</div>`;
+            ? `<img src="${candidate.imageUrl}" alt="${candidate.title || 'Produk'}" class="deal-card-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="deal-card-thumb-placeholder" style="display:none;">${PRODUCT_FALLBACK_SVG}</div>`
+            : `<div class="deal-card-thumb-placeholder">${PRODUCT_FALLBACK_SVG}</div>`;
 
         container.innerHTML = `
             <div class="deal-card-header">
@@ -880,26 +941,56 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         <span class="deal-card-price">${formatPrice(priceNum)}</span>
                         ${savingsText ? `<span class="deal-card-savings">${savingsText}</span>` : ''}
                     </div>
+                    ${reason ? `<div class="deal-card-reason">💡 ${reason}</div>` : ''}
                 </div>
             </div>
-            ${reason ? `<div class="deal-card-reason" style="margin-top: 6px;">💡 ${reason}</div>` : ''}
             <a href="${candidate.url || '#'}" target="_blank" rel="noopener noreferrer" class="deal-card-link-btn">
-                Buka di ${candidate.marketplace || 'Toko'} ↗
+                Buka di ${market.label.replace(/^[^\w\s]+/, '').trim() || 'Toko'} ↗
             </a>
         `;
         show(container);
     };
 
+    // Prioritaskan kandidat berharga valid dan bergambar di urutan teratas (CR-004B)
+    const prioritizedResults = prioritizeCandidates(searchResults);
+
     // Kasus 1: Evaluasi AI Groq berhasil
     if (evaluation && (evaluation.best_value || evaluation.cheapest)) {
-        const best = evaluation.best_value;
-        const cheap = evaluation.cheapest;
+        let best = enrichFromSearchResults(evaluation.best_value, prioritizedResults);
+        let cheap = enrichFromSearchResults(evaluation.cheapest, prioritizedResults);
+
+        // Jika best_value atau cheapest dari AI tidak memiliki harga valid, gunakan kandidat berharga valid teratas
+        const validPriceItems = prioritizedResults.filter(c => c.price && c.price >= 100);
+        if ((!best || !best.price || best.price < 100) && validPriceItems.length > 0) {
+            best = validPriceItems[0];
+        }
+        if ((!cheap || !cheap.price || cheap.price < 100) && validPriceItems.length > 0) {
+            cheap = [...validPriceItems].sort((a, b) => a.price - b.price)[0];
+        }
 
         renderDealCard(els.bestValueSection, 'best', '🏆 Best Value', best, best?.reason, best?.spec_status);
         renderDealCard(els.cheapestSection, 'cheapest', '🏷️ Termurah', cheap, cheap?.reason, cheap?.spec_status);
 
-        // Render Alternatif Lainnya (diseimbangkan antar marketplace)
-        const others = balanceByMarketplace(evaluation.others || []);
+        // Render Alternatif Lainnya
+        const enrichedOthers = (evaluation.others || []).map(o => enrichFromSearchResults(o, prioritizedResults));
+        const selectedUrls = new Set([best?.url, cheap?.url].filter(Boolean));
+        const remainingItems = [
+            ...enrichedOthers.filter(o => !selectedUrls.has(o.url)),
+            ...prioritizedResults.filter(r => !selectedUrls.has(r.url))
+        ];
+
+        // Deduplikasi berdasarkan URL
+        const seenUrls = new Set();
+        const uniqueOthers = [];
+        for (const it of remainingItems) {
+            if (!it || !it.url || seenUrls.has(it.url)) continue;
+            seenUrls.add(it.url);
+            uniqueOthers.push(it);
+        }
+
+        const prioritizedOthers = prioritizeCandidates(uniqueOthers);
+        const others = balanceByMarketplace(prioritizedOthers);
+
         if (others.length > 0 && els.otherResultsSection) {
             const displayCount = Math.min(others.length, 10);
             els.otherResultsSection.innerHTML = `
@@ -912,8 +1003,12 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         const sStatus = o.spec_status || o.specStatus || 'EXACT';
                         const sInfo = specMap[sStatus] || specMap.EXACT;
                         const imgOtherHtml = o.imageUrl
-                            ? `<img src="${o.imageUrl}" alt="${o.title || 'Produk'}" class="other-deal-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="other-deal-thumb-placeholder" style="display:none;">📦</div>`
-                            : `<div class="other-deal-thumb-placeholder">📦</div>`;
+                            ? `<img src="${o.imageUrl}" alt="${o.title || 'Produk'}" class="other-deal-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="other-deal-thumb-placeholder" style="display:none;">${PRODUCT_FALLBACK_SVG}</div>`
+                            : `<div class="other-deal-thumb-placeholder">${PRODUCT_FALLBACK_SVG}</div>`;
+                        const hasPrice = o.price && o.price >= 100;
+                        const priceDisplay = hasPrice
+                            ? `<span class="other-deal-price">${formatPrice(o.price)}</span>`
+                            : `<span class="deal-card-check-price">Cek Harga di Toko</span>`;
 
                         return `
                             <div class="other-deal-item">
@@ -925,14 +1020,12 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                                                 <span class="badge-marketplace ${m.cls}">${m.label}</span>
                                                 <span class="status-badge ${sInfo.cls}" style="font-size: 0.68rem; padding: 2px 6px;">${sInfo.text}</span>
                                             </div>
-                                            <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: var(--accent-violet);">
-                                                ${formatPrice(o.price)}
-                                            </span>
+                                            ${priceDisplay}
                                         </div>
-                                        <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.3; color: var(--fg-slate); margin-top: 2px;">
+                                        <div class="other-deal-title" style="margin-top: 2px;">
                                             ${o.title}
                                         </div>
-                                        ${o.reason ? `<div style="font-size: 0.74rem; color: #64748B; margin-top: 2px;">${o.reason}</div>` : ''}
+                                        ${o.reason ? `<div class="other-deal-reason">💡 ${o.reason}</div>` : ''}
                                         <a href="${o.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 4px; display: inline-block;">
                                             Kunjungi Toko ↗
                                         </a>
@@ -950,19 +1043,23 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
     } else {
         // Kasus 2: RESILIENT FALLBACK (Groq offline atau format error)
         console.warn('[SI:CrossMarket] Evaluasi AI Groq null -> Menjalankan Fallback Deterministik dari Exa');
-        const balancedResults = balanceByMarketplace(searchResults);
-        const validPriceCandidates = [...balancedResults].filter(c => c.price && c.price > 1000).sort((a, b) => a.price - b.price);
-        const cheapestPick = validPriceCandidates[0] || balancedResults[0];
-        const bestPick = balancedResults.find(c => c !== cheapestPick) || cheapestPick;
+        const prioritized = prioritizeCandidates(searchResults);
+        const validPriceCandidates = prioritized.filter(c => c.price && c.price >= 100).sort((a, b) => a.price - b.price);
+        const cheapestPick = validPriceCandidates[0] || null;
+        const bestPick = prioritized.find(c => c.price && c.price >= 100 && c !== cheapestPick) || validPriceCandidates[0] || null;
 
-        renderDealCard(
-            els.bestValueSection,
-            'best',
-            '🏆 Pilihan Teratas',
-            bestPick,
-            'Kandidat relevan teratas dari pencarian neural',
-            'EXACT'
-        );
+        if (bestPick) {
+            renderDealCard(
+                els.bestValueSection,
+                'best',
+                '🏆 Pilihan Teratas',
+                bestPick,
+                'Kandidat relevan teratas dari pencarian neural',
+                'EXACT'
+            );
+        } else {
+            hide(els.bestValueSection);
+        }
 
         if (cheapestPick && cheapestPick !== bestPick) {
             renderDealCard(
@@ -977,7 +1074,7 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
             hide(els.cheapestSection);
         }
 
-        const remaining = balanceByMarketplace(searchResults.filter(c => c !== bestPick && c !== cheapestPick));
+        const remaining = balanceByMarketplace(prioritized.filter(c => c !== bestPick && c !== cheapestPick));
         if (remaining.length > 0 && els.otherResultsSection) {
             const displayCount = Math.min(remaining.length, 10);
             els.otherResultsSection.innerHTML = `
@@ -990,8 +1087,12 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         const sStatus = o.spec_status || o.specStatus || 'EXACT';
                         const sInfo = specMap[sStatus] || specMap.EXACT;
                         const imgOtherHtml = o.imageUrl
-                            ? `<img src="${o.imageUrl}" alt="${o.title || 'Produk'}" class="other-deal-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="other-deal-thumb-placeholder" style="display:none;">📦</div>`
-                            : `<div class="other-deal-thumb-placeholder">📦</div>`;
+                            ? `<img src="${o.imageUrl}" alt="${o.title || 'Produk'}" class="other-deal-thumb" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="other-deal-thumb-placeholder" style="display:none;">${PRODUCT_FALLBACK_SVG}</div>`
+                            : `<div class="other-deal-thumb-placeholder">${PRODUCT_FALLBACK_SVG}</div>`;
+                        const hasPrice = o.price && o.price >= 100;
+                        const priceDisplay = hasPrice
+                            ? `<span class="other-deal-price">${formatPrice(o.price)}</span>`
+                            : `<span class="deal-card-check-price">Cek Harga di Toko</span>`;
 
                         return `
                             <div class="other-deal-item">
@@ -1003,11 +1104,9 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                                                 <span class="badge-marketplace ${m.cls}">${m.label}</span>
                                                 <span class="status-badge ${sInfo.cls}" style="font-size: 0.68rem; padding: 2px 6px;">${sInfo.text}</span>
                                             </div>
-                                            <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: var(--accent-violet);">
-                                                ${formatPrice(o.price)}
-                                            </span>
+                                            ${priceDisplay}
                                         </div>
-                                        <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.3; color: var(--fg-slate); margin-top: 2px;">
+                                        <div class="other-deal-title" style="margin-top: 2px;">
                                             ${o.title}
                                         </div>
                                         <a href="${o.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 4px; display: inline-block;">
