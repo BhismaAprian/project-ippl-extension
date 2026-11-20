@@ -46,7 +46,12 @@ const lazadaManifest = {
     },
     sold: { regex: '(\\d+)\\s*(?:terjual|sold)', group: 1 },
     location: { selector: '[class*="location"], [class*="_1cESo"]' },
-    shopName: { selector: '[class*="seller-name"], [class*="shop-name"]' }
+    shopName: { selector: '[class*="seller-name"], [class*="shop-name"]' },
+    image: {
+      selector: 'img[type="product"], img',
+      attributes: ['src', 'data-src', 'data-lazy-src', 'srcset'],
+      rejectPatterns: ['data:image', 'blank', 'placeholder', '1x1']
+    }
   },
 
   hydrationCheck: {

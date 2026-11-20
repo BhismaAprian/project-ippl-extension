@@ -158,18 +158,18 @@ console.log('=== TEST SUITE 1: FILTER KANDIDAT & BATASAN MAKSIMAL 3 ===');
 // -----------------------------------------------------------------------------
 
 async function runTests() {
-    await itAsync('enrichMissingData hanya memfilter kandidat dengan price: null dan matchType: EXACT / EQUIVALENT', async () => {
+    await itAsync('enrichMissingData hanya memfilter kandidat dengan price: null atau !imageUrl dan matchType: EXACT / EQUIVALENT', async () => {
         const { mockChrome, getTabCreationLog } = createMockChrome();
         global.chrome = mockChrome;
 
         const { enrichMissingData } = require('../extension/background/service-worker.js');
 
         const candidates = [
-            { id: 1, title: 'Produk A', price: null, matchType: 'EXACT', url: 'https://shopee.co.id/item-1' },
-            { id: 2, title: 'Produk B', price: 150000, matchType: 'EXACT', url: 'https://shopee.co.id/item-2' }, // Sudah ada harga -> skip
-            { id: 3, title: 'Produk C', price: null, matchType: 'ACCESSORY', url: 'https://shopee.co.id/item-3' }, // Bukan EXACT/EQUIVALENT -> skip
-            { id: 4, title: 'Produk D', price: null, matchType: 'EQUIVALENT', url: 'https://tokopedia.com/item-4' }, // Lolos
-            { id: 5, title: 'Produk E', price: null, matchType: 'PARTIAL', url: 'https://lazada.co.id/item-5' }, // Bukan EXACT/EQUIVALENT -> skip
+            { id: 1, title: 'Produk A', price: null, imageUrl: 'https://shopee.co.id/img1.jpg', matchType: 'EXACT', url: 'https://shopee.co.id/item-1' },
+            { id: 2, title: 'Produk B', price: 150000, imageUrl: 'https://shopee.co.id/img2.jpg', matchType: 'EXACT', url: 'https://shopee.co.id/item-2' }, // Sudah ada harga & gambar -> skip
+            { id: 3, title: 'Produk C', price: null, imageUrl: 'https://shopee.co.id/img3.jpg', matchType: 'ACCESSORY', url: 'https://shopee.co.id/item-3' }, // Bukan EXACT/EQUIVALENT -> skip
+            { id: 4, title: 'Produk D', price: null, imageUrl: 'https://tokopedia.com/img4.jpg', matchType: 'EQUIVALENT', url: 'https://tokopedia.com/item-4' }, // Lolos
+            { id: 5, title: 'Produk E', price: null, imageUrl: 'https://lazada.co.id/img5.jpg', matchType: 'PARTIAL', url: 'https://lazada.co.id/item-5' }, // Bukan EXACT/EQUIVALENT -> skip
         ];
 
         const enriched = await enrichMissingData(candidates);
@@ -185,6 +185,26 @@ async function runTests() {
         assert.strictEqual(enriched[1].price, 150000, 'Produk B harus mempertahankan harga aslinya');
         assert.strictEqual(enriched[2].price, null, 'Produk C (aksesoris) tidak boleh di-enrich');
         assert.strictEqual(enriched[3].price, 2799000, 'Produk D harus memiliki harga terisi');
+    });
+
+    await itAsync('enrichMissingData memicu enrichment jika imageUrl kosong meskipun price sudah terisi (ADR-11)', async () => {
+        const { mockChrome, getTabCreationLog } = createMockChrome({
+            customScriptResult: { price: 150000, rating: 4.8, seller: 'Toko B', imageUrl: 'https://shopee.co.id/enriched.jpg' }
+        });
+        global.chrome = mockChrome;
+
+        const { enrichMissingData } = require('../extension/background/service-worker.js');
+
+        const candidates = [
+            { id: 1, title: 'Produk Tanpa Gambar', price: 150000, imageUrl: null, matchType: 'EXACT', url: 'https://shopee.co.id/item-no-img' },
+            { id: 2, title: 'Produk Lengkap', price: 200000, imageUrl: 'https://shopee.co.id/complete.jpg', matchType: 'EXACT', url: 'https://shopee.co.id/item-complete' }
+        ];
+
+        const enriched = await enrichMissingData(candidates);
+        const tabLog = getTabCreationLog();
+        assert.strictEqual(tabLog.length, 1, 'Hanya kandidat tanpa imageUrl yang dibuka');
+        assert.strictEqual(enriched[0].imageUrl, 'https://shopee.co.id/enriched.jpg');
+        assert.strictEqual(enriched[0].enriched, true);
     });
 
     await itAsync('enrichMissingData membatasi maksimal 3 kandidat per pemanggilan pencarian', async () => {

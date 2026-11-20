@@ -111,6 +111,21 @@ it('Seluruh manifest harus memiliki kontrak hydrationCheck terstandarisasi', () 
     }
 });
 
+// 6. IMAGE FIELD CONTRACT CHECK (T4.9 / ADR-11)
+it('Seluruh manifest harus memiliki konfigurasi fields.image valid dengan string pattern rejectPatterns', () => {
+    const manifests = [shopeeManifest, tokopediaManifest, lazadaManifest, blibliManifest];
+    for (const m of manifests) {
+        assert.ok(m.fields.image, `${m.id} harus memiliki fields.image`);
+        assert.ok(typeof m.fields.image.selector === 'string', `${m.id} fields.image.selector harus string`);
+        assert.ok(Array.isArray(m.fields.image.attributes), `${m.id} fields.image.attributes harus array`);
+        assert.ok(m.fields.image.attributes.includes('src'), `${m.id} fields.image.attributes harus menyertakan 'src'`);
+        assert.ok(Array.isArray(m.fields.image.rejectPatterns), `${m.id} fields.image.rejectPatterns harus array`);
+        for (const pattern of m.fields.image.rejectPatterns) {
+            assert.strictEqual(typeof pattern, 'string', `${m.id} rejectPatterns harus string pattern murni (ADR-03)`);
+        }
+    }
+});
+
 console.log(`\n========================================`);
 console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
 console.log(`========================================\n`);

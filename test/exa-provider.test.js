@@ -184,6 +184,37 @@ async function runTests() {
         );
     });
 
+    // 6. Ekstraksi Image URL & Custom includeDomains (T4.11 / ADR-11 & ADR-12)
+    await itAsync('ExaProvider harus mengekstrak imageUrl dari metadata hasil dan menghormati options.includeDomains', async () => {
+        let sentBody = null;
+        const mockFetch = async (url, options) => {
+            sentBody = JSON.parse(options.body);
+            return {
+                ok: true,
+                json: async () => ({
+                    results: [
+                        {
+                            title: 'Laptop Asus Vivobook 14 A1404ZA',
+                            url: 'https://www.lazada.co.id/products/laptop-asus-vivobook-14-i123-s456.html',
+                            text: 'Harga Rp 6.499.000',
+                            image: 'https://laz-img-cdn.alicdn.com/p/asus.jpg'
+                        }
+                    ]
+                })
+            };
+        };
+
+        const provider = new ExaProvider({ apiKey: 'valid_key', fetchFn: mockFetch });
+        const res = await provider.search('Laptop Asus Vivobook 14', {
+            includeDomains: ['lazada.co.id'],
+            rawProduct: { title: 'Laptop Asus Vivobook 14', price: 7000000 }
+        });
+
+        assert.strictEqual(res.length, 1);
+        assert.strictEqual(res[0].imageUrl, 'https://laz-img-cdn.alicdn.com/p/asus.jpg');
+        assert.deepStrictEqual(sentBody.includeDomains, ['lazada.co.id'], 'includeDomains harus dikirim sesuai options');
+    });
+
     console.log(`\n========================================`);
     console.log(`HASIL: ${passedTests} / ${totalTests} PENGUJIAN BERHASIL.`);
     console.log(`========================================\n`);

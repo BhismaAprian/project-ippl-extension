@@ -46,7 +46,12 @@ const tokopediaManifest = {
     },
     sold: { regex: '(\\d+)\\s*(?:terjual|rb terjual)', selector: '[data-testid="spnSRPProdSold"]', group: 1 },
     location: { selector: '[data-testid="spnSRPProdShopLoc"], [class*="shop-location"]' },
-    shopName: { selector: '[data-testid="spnSRPProdShopName"], [class*="shop-name"]' }
+    shopName: { selector: '[data-testid="spnSRPProdShopName"], [class*="shop-name"]' },
+    image: {
+      selector: 'img[data-testid="imgSRPProdMain"], img',
+      attributes: ['src', 'data-src', 'data-lazy-src', 'srcset'],
+      rejectPatterns: ['data:image', 'blank', 'placeholder', '1x1']
+    }
   },
 
   hydrationCheck: {

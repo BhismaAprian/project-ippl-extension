@@ -64,8 +64,23 @@ class MockElement {
             if (selector.includes('data-testid="productSeller"') && el.attributes['data-testid'] === 'productSeller') return true;
             if (selector.includes('title') && el.attributes.title) return true;
             if (selector.includes('seller-name') && (el.attributes.class || '').includes('seller-name')) return true;
+            if (selector.includes('img') && el.tagName === 'IMG') return true;
             return false;
         });
+    }
+    querySelectorAll(selector) {
+        const results = [];
+        this._collectChildren(el => {
+            if (selector.includes('img') && el.tagName === 'IMG') return true;
+            return false;
+        }, results);
+        return results;
+    }
+    _collectChildren(predicate, acc) {
+        for (const c of this.children) {
+            if (predicate(c)) acc.push(c);
+            c._collectChildren(predicate, acc);
+        }
     }
     _findChild(predicate) {
         for (const c of this.children) {
@@ -184,6 +199,31 @@ it('checkBlocked harus mengenali selector verifikasi untuk Tokopedia, Lazada, da
     const docBlibli = new MockDocument();
     docBlibli.setBlocked('.blibli-captcha');
     assert.strictEqual(checkBlocked(docBlibli, blibliManifest), true);
+});
+
+// 6. IMAGE URL EXTRACTION & SANITIZATION (T4.10 / ADR-11)
+it('extractCard harus mengekstrak imageUrl valid dan menolak placeholder', () => {
+    // Card with placeholder first, then valid image in data-src
+    const card = new MockElement('div', { 'data-testid': 'divSRPProductCard' }, 'Asus Vivobook\nRp 4.599.000');
+    const link = new MockElement('a', { href: '/asus-official/asus-vivobook-go-14-e410ma' });
+    const dummyImg = new MockElement('img', { src: 'data:image/svg+xml;base64,PHN2Zy...', 'data-src': 'https://images.tokopedia.net/img/cache/700/product.jpg' });
+    card.appendChild(link);
+    card.appendChild(dummyImg);
+
+    const extracted = extractCard(card, tokopediaManifest);
+    assert.ok(extracted !== null);
+    assert.strictEqual(extracted.imageUrl, 'https://images.tokopedia.net/img/cache/700/product.jpg', 'Harus mengambil data-src jika src berupa data:image');
+
+    // Card with srcset
+    const cardSrcset = new MockElement('div', { 'data-testid': 'productCard' }, 'Acer Aspire 3\nRp 5.199.000');
+    const linkSrcset = new MockElement('a', { href: '/p/acer-aspire-3/ps--ACS-100-01' });
+    const srcsetImg = new MockElement('img', { srcset: 'https://www.blibli.com/img1.jpg 1x, https://www.blibli.com/img2.jpg 2x' });
+    cardSrcset.appendChild(linkSrcset);
+    cardSrcset.appendChild(srcsetImg);
+
+    const extractedSrcset = extractCard(cardSrcset, blibliManifest);
+    assert.ok(extractedSrcset !== null);
+    assert.strictEqual(extractedSrcset.imageUrl, 'https://www.blibli.com/img1.jpg', 'Harus mengambil URL pertama dari srcset');
 });
 
 console.log(`\n========================================`);

@@ -240,12 +240,31 @@ class ExaProvider extends BaseProviderClass {
             const snippet = item.text || item.snippet || '';
             const price = this.extractPrice(snippet);
 
+            // Ekstraksi Gambar dari metadata hasil Exa (ADR-11 / T4.11)
+            let imageUrl = null;
+            const candidateImg = item.image
+                || item.extras?.image
+                || item.extras?.ogImage
+                || item.ogImage
+                || (item.extras?.openGraph && item.extras.openGraph['og:image'])
+                || (item.openGraph && item.openGraph.image)
+                || null;
+
+            if (typeof candidateImg === 'string') {
+                let cleanImg = candidateImg.trim();
+                if (cleanImg.startsWith('//')) cleanImg = 'https:' + cleanImg;
+                if (/^https?:\/\//i.test(cleanImg)) {
+                    imageUrl = cleanImg;
+                }
+            }
+
             pdpCandidates.push({
                 title: item.title || 'Tanpa Judul',
                 url: item.url,
                 snippet: snippet.length > 250 ? snippet.substring(0, 250) + '...' : snippet,
                 marketplace: classification.marketplace,
                 price: price,
+                imageUrl: imageUrl,
                 raw: item
             });
         }

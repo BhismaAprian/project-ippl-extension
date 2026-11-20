@@ -329,10 +329,63 @@ function extractCard(card, manifest) {
         }
     }
 
+    // 7. Ekstraksi Gambar (imageUrl) (ADR-11)
+    let imageUrl = null;
+    const imageConfig = manifest.fields?.image;
+    if (imageConfig?.selector) {
+        let imgElements = [];
+        if (typeof card.querySelectorAll === 'function') {
+            try {
+                imgElements = Array.from(card.querySelectorAll(imageConfig.selector));
+            } catch (e) {
+                imgElements = [];
+            }
+        }
+        if (imgElements.length === 0 && typeof card.querySelector === 'function') {
+            try {
+                const singleImg = card.querySelector(imageConfig.selector);
+                if (singleImg) imgElements = [singleImg];
+            } catch (e) { }
+        }
+
+        const attributes = imageConfig.attributes || ['src', 'data-src', 'data-lazy-src', 'srcset'];
+        const rejectPatterns = (imageConfig.rejectPatterns || ['data:image', 'blank', 'placeholder', '1x1'])
+            .map(p => toRegExp(p))
+            .filter(Boolean);
+
+        for (const imgEl of imgElements) {
+            for (const attr of attributes) {
+                let val = imgEl.getAttribute(attr);
+                if (!val || typeof val !== 'string') continue;
+                val = val.trim();
+                if (!val) continue;
+
+                if (attr === 'srcset' || val.includes(' ') || val.includes(',')) {
+                    const firstPart = val.split(',')[0].trim().split(/\s+/)[0].trim();
+                    if (firstPart) val = firstPart;
+                }
+
+                if (val.startsWith('//')) {
+                    val = 'https:' + val;
+                }
+
+                const isRejected = rejectPatterns.some(rx => rx.test(val));
+                if (isRejected) continue;
+
+                if (/^https?:\/\//i.test(val)) {
+                    imageUrl = val;
+                    break;
+                }
+            }
+            if (imageUrl) break;
+        }
+    }
+
     return {
         title: title,
         price: price,
         url: finalUrl,
+        imageUrl: imageUrl,
         rating: rating,
         sold: sold,
         location: location,

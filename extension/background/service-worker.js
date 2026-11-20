@@ -316,11 +316,12 @@ async function enrichSingleCandidatePdp(candidate) {
                         const adapter = adapters.find(a => a.matchesUrl(currentUrl));
                         if (adapter && typeof adapter.extractProduct === 'function') {
                             const prod = adapter.extractProduct();
-                            if (prod && (prod.price !== null || prod.rating !== null)) {
+                            if (prod && (prod.price !== null || prod.rating !== null || prod.imageUrl)) {
                                 return {
                                     price: prod.price || null,
                                     rating: prod.rating || null,
-                                    seller: prod.seller || null
+                                    seller: prod.seller || null,
+                                    imageUrl: prod.imageUrl || null
                                 };
                             }
                         }
@@ -342,8 +343,13 @@ async function enrichSingleCandidatePdp(candidate) {
                                         const r = parseFloat(data.aggregateRating.ratingValue);
                                         if (!isNaN(r)) rating = r;
                                     }
-                                    if (price !== null || rating !== null) {
-                                        return { price, rating, seller: offer?.seller?.name || null };
+                                    let imageUrl = null;
+                                    if (data.image) {
+                                        const rawImg = Array.isArray(data.image) ? data.image[0] : (typeof data.image === 'object' ? data.image.url : data.image);
+                                        if (typeof rawImg === 'string' && /^https?:\/\//i.test(rawImg)) imageUrl = rawImg;
+                                    }
+                                    if (price !== null || rating !== null || imageUrl !== null) {
+                                        return { price, rating, seller: offer?.seller?.name || null, imageUrl };
                                     }
                                 }
                             } catch (e) { }
@@ -351,9 +357,18 @@ async function enrichSingleCandidatePdp(candidate) {
 
                         // 3.3 Fallback: OpenGraph Meta
                         const ogPrice = document.querySelector('meta[property="product:price:amount"]')?.getAttribute('content');
+                        const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
+                        let p = null;
                         if (ogPrice) {
-                            const p = Math.round(parseFloat(ogPrice));
-                            if (!isNaN(p) && p > 0) return { price: p, rating: null, seller: null };
+                            const parsed = Math.round(parseFloat(ogPrice));
+                            if (!isNaN(parsed) && parsed > 0) p = parsed;
+                        }
+                        let img = null;
+                        if (ogImage && /^https?:\/\//i.test(ogImage)) {
+                            img = ogImage;
+                        }
+                        if (p !== null || img !== null) {
+                            return { price: p, rating: null, seller: null, imageUrl: img };
                         }
 
                         return null;
@@ -385,7 +400,7 @@ async function enrichSingleCandidatePdp(candidate) {
 }
 
 /**
- * Melakukan Deep Enrichment untuk kandidat yang memiliki harga kosong
+ * Melakukan Deep Enrichment untuk kandidat yang memiliki harga atau gambar kosong (ADR-09 & ADR-11)
  * Membuka tab tersembunyi (active: false) secara sekuensial (maksimal 3 kandidat)
  * @param {Array<object>} candidates 
  * @returns {Promise<Array<object>>}
@@ -395,15 +410,15 @@ async function enrichMissingData(candidates) {
         return candidates || [];
     }
 
-    // Filter kandidat: price === null/0 DAN matchType adalah 'EXACT' atau 'EQUIVALENT'
+    // Filter kandidat: (price === null/0 || !imageUrl) DAN matchType adalah 'EXACT' atau 'EQUIVALENT'
     const eligibleIndices = [];
     for (let i = 0; i < candidates.length; i++) {
         const c = candidates[i];
-        const isPriceMissing = c && (c.price === null || c.price === undefined || c.price === 0);
+        const isDataMissing = c && (c.price === null || c.price === undefined || c.price === 0 || !c.imageUrl);
         const isMatchEligible = c && (c.matchType === 'EXACT' || c.matchType === 'EQUIVALENT');
         const hasUrl = c && typeof c.url === 'string' && c.url.trim().length > 0;
 
-        if (isPriceMissing && isMatchEligible && hasUrl) {
+        if (isDataMissing && isMatchEligible && hasUrl) {
             eligibleIndices.push(i);
             if (eligibleIndices.length >= 3) {
                 // Batasi maksimal 3 kandidat per pencarian
@@ -434,6 +449,11 @@ async function enrichMissingData(candidates) {
                 }
                 if (enrichedData.seller && !candidate.shopName) {
                     candidate.shopName = enrichedData.seller;
+                }
+                if (enrichedData.imageUrl && !candidate.imageUrl) {
+                    candidate.imageUrl = enrichedData.imageUrl;
+                    candidate.enriched = true;
+                    candidate.enrichmentSource = candidate.enrichmentSource || 'deep-pdp-adapter';
                 }
             }
         } catch (err) {

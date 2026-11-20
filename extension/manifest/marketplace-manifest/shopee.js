@@ -46,7 +46,12 @@ const shopeeManifest = {
     },
     sold: { regex: '(\\d+)\\s*terjual', group: 1 },
     location: { selector: '[class*="text-shopee-black54"]' },
-    shopName: null // SELALU null untuk Shopee search
+    shopName: null, // SELALU null untuk Shopee search
+    image: {
+      selector: 'img',
+      attributes: ['src', 'data-src', 'data-lazy-src', 'srcset'],
+      rejectPatterns: ['data:image', 'blank', 'placeholder', '1x1']
+    }
   },
 
   hydrationCheck: {

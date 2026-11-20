@@ -46,7 +46,12 @@ const blibliManifest = {
     },
     sold: { regex: '(\\d+)\\s*(?:terjual|sold)', group: 1 },
     location: { selector: '[data-testid="productLocation"], [class*="product__location"]' },
-    shopName: { selector: '[data-testid="productSeller"], [class*="product__seller"]' }
+    shopName: { selector: '[data-testid="productSeller"], [class*="product__seller"]' },
+    image: {
+      selector: 'img[data-testid="productImage"], img',
+      attributes: ['src', 'data-src', 'data-lazy-src', 'srcset'],
+      rejectPatterns: ['data:image', 'blank', 'placeholder', '1x1']
+    }
   },
 
   hydrationCheck: {

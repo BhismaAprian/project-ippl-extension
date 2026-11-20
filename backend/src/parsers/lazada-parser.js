@@ -8,6 +8,41 @@
 
 const cheerio = require('cheerio');
 
+function extractImageFromCheerio($, el) {
+    const rejectPatterns = [/data:image/i, /blank/i, /placeholder/i, /1x1/i];
+    const attrs = ['src', 'data-src', 'data-lazy-src', 'srcset'];
+    let result = null;
+    const imgs = el.find('img');
+    imgs.each((_, imgEl) => {
+        if (result) return;
+        const $img = $(imgEl);
+        for (const attr of attrs) {
+            let val = $img.attr(attr);
+            if (!val || typeof val !== 'string') continue;
+            val = val.trim();
+            if (!val) continue;
+
+            if (attr === 'srcset' || val.includes(' ') || val.includes(',')) {
+                const firstPart = val.split(',')[0].trim().split(/\s+/)[0].trim();
+                if (firstPart) val = firstPart;
+            }
+
+            if (val.startsWith('//')) {
+                val = 'https:' + val;
+            }
+
+            const isRejected = rejectPatterns.some(rx => rx.test(val));
+            if (isRejected) continue;
+
+            if (/^https?:\/\//i.test(val)) {
+                result = val;
+                break;
+            }
+        }
+    });
+    return result;
+}
+
 function parsePrice(text) {
     if (!text) return null;
     const clean = text.replace(/[^\d]/g, '');
@@ -63,7 +98,8 @@ function parseLazada(html) {
         }
         const price = parsePrice(priceText);
 
-        const imgUrl = card.find('img').first().attr('src') || null;
+        // Ekstraksi Gambar (ADR-11)
+        const imgUrl = extractImageFromCheerio($, card);
 
         let rating = null;
         const ratingText = card.find('[class*="rating"]').text();
