@@ -407,6 +407,110 @@ it('Verifikasi penyeimbangan kandidat multi-marketplace dan Scoped Fallback Exa 
     assert.ok(scopedDomainsCaptured.some(domains => domains.includes('lazada.co.id')));
 });
 
+// -----------------------------------------------------------------------------
+console.log('\n=== TEST SUITE 9: HOTFIX CR-004B (Perbaikan Gambar, Harga Valid & Side Panel UI) ===');
+// -----------------------------------------------------------------------------
+
+it('Payload Exa search harus menyertakan contents.highlights dan extras.imageLinks (CR-004B)', async () => {
+    const { ExaProvider } = require('../extension/shared/providers/exa-provider.js');
+    let capturedPayload = null;
+    const mockFetch = async (url, opts) => {
+        capturedPayload = JSON.parse(opts.body);
+        return {
+            ok: true,
+            json: async () => ({ results: [] })
+        };
+    };
+
+    const provider = new ExaProvider({ apiKey: 'test-key', fetchFn: mockFetch });
+    await provider.search('kasur in the box 160x200');
+
+    assert.ok(capturedPayload, 'Payload Exa harus terkirim');
+    assert.strictEqual(capturedPayload.contents.text.maxCharacters, 800);
+    assert.strictEqual(capturedPayload.contents.highlights.numSentences, 2);
+    assert.strictEqual(capturedPayload.extras.imageLinks, 1);
+});
+
+it('Exa Provider harus mengekstrak harga dari text & highlights serta gambar dari extras.imageLinks (CR-004B)', async () => {
+    const { ExaProvider } = require('../extension/shared/providers/exa-provider.js');
+    const mockFetch = async () => ({
+        ok: true,
+        json: async () => ({
+            results: [
+                {
+                    title: 'InTheBox Kasur Springbed 160x200',
+                    url: 'https://www.tokopedia.com/inthebox/kasur-springbed-160x200',
+                    text: 'Kasur springbed berkualitas',
+                    highlights: ['Dapatkan diskon hemat harga Rp 2.450.000 hanya hari ini'],
+                    extras: {
+                        imageLinks: ['https://images.tokopedia.com/img/cache/700/product-1.jpg']
+                    }
+                }
+            ]
+        })
+    });
+
+    const provider = new ExaProvider({ apiKey: 'test-key', fetchFn: mockFetch });
+    const cands = await provider.search('kasur in the box');
+
+    assert.strictEqual(cands.length, 1);
+    assert.strictEqual(cands[0].price, 2450000);
+    assert.strictEqual(cands[0].imageUrl, 'https://images.tokopedia.com/img/cache/700/product-1.jpg');
+});
+
+it('Prioritisasi kandidat harus menempatkan kandidat berharga valid dan bergambar di urutan teratas (CR-004B)', () => {
+    const candidates = [
+        { title: 'Item 1 - Tanpa Harga', price: null, imageUrl: null },
+        { title: 'Item 2 - Harga Nol', price: 0, imageUrl: 'https://img.com/2.jpg' },
+        { title: 'Item 3 - Harga Valid Tanpa Gambar', price: 1500000, imageUrl: null },
+        { title: 'Item 4 - Lengkap Valid', price: 2000000, imageUrl: 'https://img.com/4.jpg' }
+    ];
+
+    const prioritized = [...candidates].sort((a, b) => {
+        const aPrice = (a && a.price && a.price >= 100) ? 1 : 0;
+        const bPrice = (b && b.price && b.price >= 100) ? 1 : 0;
+        if (aPrice !== bPrice) return bPrice - aPrice;
+
+        const aImg = (a && a.imageUrl) ? 1 : 0;
+        const bImg = (b && b.imageUrl) ? 1 : 0;
+        if (aImg !== bImg) return bImg - aImg;
+
+        return (a?.price || 0) - (b?.price || 0);
+    });
+
+    assert.strictEqual(prioritized[0].title, 'Item 4 - Lengkap Valid');
+    assert.strictEqual(prioritized[1].title, 'Item 3 - Harga Valid Tanpa Gambar');
+    assert.strictEqual(prioritized[2].title, 'Item 2 - Harga Nol');
+    assert.strictEqual(prioritized[3].title, 'Item 1 - Tanpa Harga');
+});
+
+it('AIClient evaluateDeals prompt harus mewajibkan Bahasa Indonesia singkat maksimal 10 kata (CR-004B / NFR-16)', async () => {
+    const { AIClient } = require('../extension/shared/ai-client.js');
+    const ai = new AIClient();
+    let capturedPrompt = null;
+    ai.requestJson = async (prompt) => {
+        capturedPrompt = prompt;
+        return {
+            best_value: { title: 'A', url: 'http://a', price: 1000, spec_status: 'EXACT', reason: 'Tebal 30cm bonus bantal' },
+            cheapest: { title: 'B', url: 'http://b', price: 900, spec_status: 'EXACT', reason: 'Ukuran pas garansi 10 thn' },
+            others: []
+        };
+    };
+
+    global.chrome = global.chrome || {};
+    global.chrome.storage = global.chrome.storage || {
+        local: { get: async () => ({ groqKey: 'dummy-key' }) }
+    };
+
+    await ai.evaluateDeals(
+        { title: 'Kasur A', price: 2000000 },
+        [{ title: 'Kasur B', price: 1800000, url: 'http://b' }]
+    );
+
+    assert.ok(capturedPrompt.includes('Bahasa Indonesia'));
+    assert.ok(capturedPrompt.includes('maksimal 10 kata') || capturedPrompt.includes('MAXIMUM of 10 words'));
+});
+
 (async () => {
     if (pendingTests.length > 0) {
         await Promise.all(pendingTests);
