@@ -445,6 +445,49 @@ async function enrichMissingData(candidates) {
 }
 
 // =========================================================================
+// In-House Resilient Scraping Engine Client (CR-003 / ADR-10)
+// Mengirim permintaan pencarian ke server backend mandiri (http://localhost:3000/api/search)
+// =========================================================================
+async function searchWithBackendEngine(query, marketplace) {
+    const backendUrl = 'http://localhost:3000/api/search';
+    try {
+        if (typeof fetch === 'undefined') return null;
+
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+
+        const res = await fetch(backendUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                keyword: query,
+                marketplace: marketplace || 'shopee'
+            }),
+            signal: controller ? controller.signal : undefined
+        });
+
+        if (timeoutId) clearTimeout(timeoutId);
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.success && Array.isArray(data.candidates) && data.candidates.length > 0) {
+                console.log(`[ServiceWorker] Backend Engine berhasil mengembalikan ${data.candidates.length} produk untuk ${marketplace}.`);
+                return {
+                    status: 'OK',
+                    success: true,
+                    marketplace: marketplace || 'shopee',
+                    source: 'in-house-engine',
+                    candidates: data.candidates
+                };
+            }
+        }
+    } catch (err) {
+        console.info(`[ServiceWorker] In-House Backend Engine tidak aktif (${err.message}). Beralih ke fallback tab search.`);
+    }
+    return null;
+}
+
+// =========================================================================
 // Listener Message: START_NATIVE_SEARCH, ENRICH_MISSING_DATA, & CANCEL
 // =========================================================================
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
@@ -454,8 +497,21 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
             const manifest = request.manifest;
             const marketplace = manifest?.id || 'shopee';
 
-            openAndExtractSearchTab(query, manifest)
-                .then(result => {
+            (async () => {
+                // 1. Coba In-House Resilient Scraping Engine terlebih dahulu
+                try {
+                    const backendResult = await searchWithBackendEngine(query, marketplace);
+                    if (backendResult && Array.isArray(backendResult.candidates) && backendResult.candidates.length > 0) {
+                        sendResponse(backendResult);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('[ServiceWorker] Backend search attempt threw error, proceeding to tab search:', e.message);
+                }
+
+                // 2. Fallback ke Tab-Based Native Search jika backend offline / kosong
+                try {
+                    const result = await openAndExtractSearchTab(query, manifest);
                     if (result.status === 'OK') {
                         sendResponse({
                             status: 'OK',
@@ -472,15 +528,15 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
                             candidates: []
                         });
                     }
-                })
-                .catch(err => {
+                } catch (err) {
                     sendResponse({
                         status: 'ERROR',
                         success: false,
                         marketplace: marketplace,
                         error: err.message
                     });
-                });
+                }
+            })();
 
             return true; // Asynchronous sendResponse
         }
@@ -521,7 +577,8 @@ if (typeof module !== 'undefined' && module.exports) {
         enrichMissingData,
         enrichSingleCandidatePdp,
         openAndExtractSearchTab,
-        cleanupLeftoverTabs
+        cleanupLeftoverTabs,
+        searchWithBackendEngine
     };
 }
 
