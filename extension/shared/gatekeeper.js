@@ -1,19 +1,74 @@
 /**
  * extension/shared/gatekeeper.js
  * 
- * Strict Category & Spec Gatekeeper 3 Lapis.
- * Memfilter kandidat produk agar tidak melenceng dari kategori asli
- * (misal Springbed vs Matras Angin, atau RAM vs Caddy).
+ * Gatekeeper v2 & Multi-Layer Hard Negative Filtering (ADR-13).
+ * Memfilter kandidat produk secara deterministik agar tidak melenceng dari jenis fisik produk asli.
  * 
  * Lapisan:
- * 1. Banned Terms Filter (Negative terms per kategori)
- * 1.5 Smart Dominance & Accessory Guard (Pencegahan aksesoris murni vs bonus)
+ * 0. Promo Stripping & Head-Noun Lock (Membersihkan promo & mengunci 3 token pertama)
+ * 1. Prepositional Guard (Menolak frasa pelengkap seperti "untuk kasur", "buat laptop")
+ * 1.5 Smart Dominance & Banned Terms Filter
  * 2. Core Keywords Check (Wajib mengandung entitas utama produk)
- * 3. Price Plausibility Guard (Batas bawah 20% dari harga asli)
+ * 3. Price Plausibility Guard (Price floor 30% untuk produk >= Rp 100.000)
+ * 4. Batch LLM Adjudication untuk Zona Abu-Abu (skor kemiripan 0.40 - 0.69)
  */
 
+const ACCESSORY_HEAD_NOUNS = new Set([
+    'sprei', 'seprei', 'bedcover', 'bed cover', 'bantal', 'guling', 'sarung', 'cover',
+    'pelindung', 'tas', 'sleeve', 'case', 'casing', 'charger', 'adaptor', 'kabel',
+    'bracket', 'caddy', 'stand', 'cooler', 'cooling pad', 'stiker', 'skin',
+    'tempered glass', 'antigores', 'anti gores', 'keycaps', 'keycap', 'mousepad', 'mouse pad'
+]);
+
+const STOP_WORDS_PROMO = new Set([
+    'promo', 'diskon', 'murah', 'cod', 'terlaris', 'gratis', 'ongkir', 'terbaru',
+    'ready', 'stock', 'bisa', 'termurah', 'original', 'ori', 'garansi', 'resmi',
+    'sale', 'seller', 'terpercaya', 'cashback', 'voucher', 'dan', 'di', 'ke', 'dari'
+]);
+
 /**
- * Memeriksa kesesuaian kategori kandidat produk terhadap produk referensi
+ * Membersihkan awalan promosi dan kurung/tag pada judul produk (ADR-13 / Layer 0)
+ * @param {string} title 
+ * @returns {string}
+ */
+function stripPromoPrefix(title) {
+    if (!title || typeof title !== 'string') return '';
+    let cleaned = title.trim();
+    let prev = '';
+    while (cleaned !== prev) {
+        prev = cleaned;
+        cleaned = cleaned
+            .replace(/^\[[^\]]*\]\s*/i, '')
+            .replace(/^\([^\)]*\)\s*/i, '')
+            .replace(/^\{[^\}]*\}\s*/i, '')
+            .replace(/^(?:promo|diskon|murah|cod|terlaris|gratis\s+ongkir(?:\s+ekstra)?|terbaru|flash\s+sale|ready(?:\s+stock)?|bisa\s+cod|termurah|original|ori|garansi(?:\s+resmi)?|resmi|cuci\s+gudang|sale|best\s+seller|terpercaya|cashback|voucher)\b[\s:!\-_/]*/gi, '')
+            .trim();
+    }
+    return cleaned;
+}
+
+/**
+ * Menghitung koefisien kemiripan token Jaccard antara dua judul
+ * @param {string} titleA 
+ * @param {string} titleB 
+ * @returns {number} 0.0 s/d 1.0
+ */
+function computeTokenSimilarity(titleA, titleB) {
+    if (!titleA || !titleB) return 0;
+    const tokensA = new Set(titleA.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length >= 2 && !STOP_WORDS_PROMO.has(t)));
+    const tokensB = new Set(titleB.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length >= 2 && !STOP_WORDS_PROMO.has(t)));
+    if (tokensA.size === 0 || tokensB.size === 0) return 0;
+
+    let intersection = 0;
+    for (const t of tokensB) {
+        if (tokensA.has(t)) intersection++;
+    }
+    const union = new Set([...tokensA, ...tokensB]).size;
+    return union > 0 ? intersection / union : 0;
+}
+
+/**
+ * Memeriksa kesesuaian kategori kandidat produk terhadap produk referensi (Gatekeeper v2)
  * @param {string} candidateTitle - Judul kandidat produk alternatif
  * @param {object} [aiData] - Metadata pemahaman produk dari AI (category, core_keywords, banned_terms)
  * @param {object} [rawProduct] - Produk asli (title, price, dll)
@@ -28,16 +83,51 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
     const origPrice = rawProduct?.price || 0;
     const isMattress = origTitle.includes('springbed') || origTitle.includes('spring bed') || origTitle.includes('kasur') || origTitle.includes('matras');
 
-    // 1. Ekstrak Daftar Kata Terlarang (Banned / Negative Terms)
-    const bannedSet = new Set();
+    // =========================================================================
+    // LAYER 0: Promo Stripping & Head-Noun Lock (ADR-13)
+    // =========================================================================
+    const strippedTitle = stripPromoPrefix(candidateTitle);
+    const headTokens = strippedTitle.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 3);
+    const bigram01 = headTokens.length >= 2 ? `${headTokens[0]} ${headTokens[1]}` : '';
+    const bigram12 = headTokens.length >= 3 ? `${headTokens[1]} ${headTokens[2]}` : '';
 
-    // Ambil dari aiData jika tersedia
+    const isAccessoryInHead = headTokens.some(t => ACCESSORY_HEAD_NOUNS.has(t))
+        || ACCESSORY_HEAD_NOUNS.has(bigram01)
+        || ACCESSORY_HEAD_NOUNS.has(bigram12);
+
+    if (isAccessoryInHead) {
+        // Periksa apakah produk referensi aslinya memang aksesoris tersebut
+        const origHasSameAccessory = Array.from(ACCESSORY_HEAD_NOUNS).some(acc => {
+            return (headTokens.includes(acc) || bigram01 === acc || bigram12 === acc) && origTitle.includes(acc);
+        });
+
+        if (!origHasSameAccessory) {
+            // Tolak mutlak karena fokus awal produk (head-noun) adalah aksesoris
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // LAYER 1 & 1.5: Prepositional Guard & Banned Terms (ADR-13)
+    // =========================================================================
+    const PREPOSITIONAL_GUARD_REGEX = /\b(untuk|buat|khusus|pelindung|pengganti|sarung|cover|aksesoris)\s+(kasur|springbed|spring\s+bed|laptop|macbook|hp|smartphone|ram)\b/i;
+    if (PREPOSITIONAL_GUARD_REGEX.test(candTitle)) {
+        if (!PREPOSITIONAL_GUARD_REGEX.test(origTitle)) {
+            const hasBonus = /\b(bonus|gratis|free|\+|plus|include|termasuk|dapat|hadiah)\b/i.test(candTitle);
+            const isPureAccessoryPhrase = /^(set\s+|paket\s+|aneka\s+)?(bantal|guling|sprei|seprai|cover|sarung|tas|charger|casing)\b/i.test(strippedTitle);
+            if (isPureAccessoryPhrase || !hasBonus) {
+                return false;
+            }
+        }
+    }
+
+    // Ekstrak Daftar Kata Terlarang (Banned / Negative Terms)
+    const bannedSet = new Set();
     if (aiData?.banned_terms && Array.isArray(aiData.banned_terms)) {
         const accessoryTerms = ['bantal', 'guling', 'cover', 'sprei', 'seprai', 'sarung', 'bed cover', 'bedcover'];
         aiData.banned_terms.forEach(term => {
             if (typeof term === 'string' && term.trim()) {
                 const cleanTerm = term.trim().toLowerCase();
-                // Jangan masukkan aksesoris kasur ke bannedSet jika produk aslinya adalah kasur
                 if (isMattress && accessoryTerms.includes(cleanTerm)) {
                     return;
                 }
@@ -46,18 +136,12 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         });
     }
 
-    // Kamus Aturan Negatif Bawaan (Defensive Rules):
-    // Kasur / Springbed / Bedding
-    // CATATAN: "bantal", "cover", "sprei", "sarung", "guling", "dipan" DIHAPUS dari daftar banned global
-    // agar kasur dengan bonus bantal/cover quilting tidak dibuang secara keliru.
+    // Kamus Aturan Negatif Bawaan
     if (isMattress) {
-        const bedBanned = [
-            'angin', 'tiup', 'air mattress', 'air bed', 'inflatable', 'pompa'
-        ];
+        const bedBanned = ['angin', 'tiup', 'air mattress', 'air bed', 'inflatable', 'pompa'];
         bedBanned.forEach(b => bannedSet.add(b));
     }
 
-    // Laptop / Notebook
     if (origTitle.includes('laptop') || origTitle.includes('notebook') || origTitle.includes('macbook')) {
         const laptopBanned = [
             'tas', 'sleeve', 'case', 'skin', 'stand', 'cooler', 'cooling pad',
@@ -66,11 +150,9 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         laptopBanned.forEach(b => bannedSet.add(b));
     }
 
-    // RAM / Memory
     if (origTitle.includes('ram') || origTitle.includes('sodimm') || origTitle.includes('dimm')) {
         const ramBanned = ['caddy', 'enclosure', 'baut', 'kabel data', 'bracket', 'obeng'];
         ramBanned.forEach(b => bannedSet.add(b));
-        // Jika RAM Laptop / SODIMM, buang RAM PC LongDIMM
         if (origTitle.includes('laptop') || origTitle.includes('sodimm')) {
             if (candTitle.includes('longdimm') || (candTitle.includes('desktop') && !candTitle.includes('laptop'))) {
                 return false;
@@ -78,7 +160,6 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         }
     }
 
-    // Smartphone / HP
     if (origTitle.includes('hp') || origTitle.includes('smartphone') || origTitle.includes('iphone') || origTitle.includes('samsung galaxy')) {
         const phoneBanned = [
             'case', 'casing', 'silicone', 'tempered glass', 'antigores',
@@ -87,53 +168,46 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         phoneBanned.forEach(b => bannedSet.add(b));
     }
 
-    // Mouse
     if (origTitle.includes('mouse') && !origTitle.includes('mousepad')) {
         bannedSet.add('mousepad');
         bannedSet.add('mouse pad');
     }
 
-    // Keyboard
     if (origTitle.includes('keyboard')) {
         bannedSet.add('keycaps');
         bannedSet.add('keycap');
         bannedSet.add('switch puller');
     }
 
-    // LAYER 1: Banned Words Rejection
     for (const banned of bannedSet) {
         const isWord = banned.includes(' ')
             ? candTitle.includes(banned)
             : new RegExp(`\\b${banned}\\b`, 'i').test(candTitle);
 
         if (isWord) {
-            // Pengecualian: jika judul asli sendiri mengandung kata itu (misal produk aslinya memang "Sofa Bed")
             if (!origTitle.includes(banned)) {
                 return false;
             }
         }
     }
 
-    // LAYER 1.5: Smart Dominance & Accessory Guard (Khusus Kasur / Bedding)
-    // Mencegah lolosnya aksesoris murni (seperti Bantal Guling, Bed Cover, Sprei Kasur),
-    // TETAPI WAJIB MELOLOSKAN produk kasur yang menyertakan bonus/gratis bantal/sprei.
+    // Smart Dominance & Accessory Guard Khusus Kasur
     if (isMattress) {
         const hasCoreMattress = /\b(springbed|spring bed|kasur|matras)\b/i.test(candTitle);
         const hasBonus = /\b(bonus|gratis|free|\+|plus|include|termasuk|dapat|hadiah|set|paket)\b/i.test(candTitle);
-
-        // Cek apakah judul kandidat murni diawali atau difokuskan pada aksesoris
-        const startsWithAccessory = /^(bantal|guling|bed\s*cover|bedcover|sprei|seprai)\b/i.test(candTitle);
+        const startsWithAccessory = /^(bantal|guling|bed\s*cover|bedcover|sprei|seprai)\b/i.test(strippedTitle);
         const isCoverSheetOnly = /\b(cover\s+kasur|sarung\s+kasur|sprei\s+kasur|seprai\s+kasur|pelindung\s+kasur)\b/i.test(candTitle);
 
         if (startsWithAccessory || isCoverSheetOnly) {
-            // Jika judul diawali nama aksesoris atau bertuliskan "cover kasur" tanpa indikasi penjualan kasur utama + bonus:
             if (!hasCoreMattress || !hasBonus) {
                 return false;
             }
         }
     }
 
-    // LAYER 2: Core Keywords Check (Wajib Mengandung Kata Kunci Entitas Utama)
+    // =========================================================================
+    // LAYER 2: Core Keywords Check (Entitas Utama Produk)
+    // =========================================================================
     const coreKeywords = [];
     if (aiData?.core_keywords && Array.isArray(aiData.core_keywords) && aiData.core_keywords.length > 0) {
         aiData.core_keywords.forEach(k => {
@@ -141,7 +215,6 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         });
     }
 
-    // Fallback core keywords jika AI tidak mengembalikan
     if (coreKeywords.length === 0) {
         if (origTitle.includes('springbed') || origTitle.includes('spring bed')) {
             coreKeywords.push('springbed', 'spring bed', 'kasur');
@@ -154,11 +227,10 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         } else if (origTitle.includes('keyboard')) {
             coreKeywords.push('keyboard');
         } else if (rawProduct?.title) {
-            // Ekstrak token esensial dari judul asli jika AI offline
             const fallbackTokens = rawProduct.title.toLowerCase()
                 .replace(/[^a-z0-9\s]/g, ' ')
                 .split(/\s+/)
-                .filter(t => t.length >= 3 && !['promo', 'murah', 'diskon', 'terlaris', 'original', 'asli', 'garansi', 'resmi', 'jual', 'ready', 'bisa', 'cod', 'gratis', 'ongkir', 'dan', 'di', 'ke', 'dari', 'untuk'].includes(t));
+                .filter(t => t.length >= 3 && !STOP_WORDS_PROMO.has(t));
             if (fallbackTokens.length > 0) {
                 coreKeywords.push(...fallbackTokens.slice(0, 3));
             }
@@ -177,11 +249,13 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
         }
     }
 
-    // LAYER 3: Price Plausibility Check (Batas Bawah Anomali Harga Aksesoris)
-    // Jika harga kandidat diketahui dan harga produk asli >= Rp 50.000
-    if (candidatePrice && candidatePrice > 0 && origPrice >= 50000) {
-        // Jika harga kandidat < 20% dari harga asli, kemungkinan 99% adalah aksesoris/palsu
-        if (candidatePrice < (origPrice * 0.20)) {
+    // =========================================================================
+    // LAYER 3: Price Plausibility Guard (Price Floor 30% - ADR-13)
+    // =========================================================================
+    if (candidatePrice && candidatePrice > 0 && origPrice > 0) {
+        // Batas bawah kewajaran: 30% untuk harga produk acuan >= Rp 100.000, 20% untuk < Rp 100.000
+        const minRatio = origPrice >= 100000 ? 0.30 : 0.20;
+        if (candidatePrice < (origPrice * minRatio)) {
             return false;
         }
     }
@@ -189,9 +263,99 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
     return true;
 }
 
+/**
+ * Melakukan verifikasi batch LLM untuk kandidat di zona abu-abu (skor kemiripan 0.40 - 0.69) (Layer 4 / ADR-13)
+ * @param {Array<object>} candidates 
+ * @param {object} referenceProduct 
+ * @param {object} [aiClient] 
+ * @returns {Promise<Array<object>>}
+ */
+async function adjudicateCandidatesBatch(candidates, referenceProduct, aiClient = null) {
+    if (!Array.isArray(candidates) || candidates.length === 0) return candidates || [];
+    if (!referenceProduct || !aiClient || typeof aiClient.requestJson !== 'function') {
+        return candidates;
+    }
+
+    const origTitle = referenceProduct.title || '';
+    const greyZoneItems = [];
+
+    for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const sim = computeTokenSimilarity(origTitle, c.title);
+        c.tokenSimilarity = sim;
+        if (sim >= 0.40 && sim <= 0.69) {
+            greyZoneItems.push({ id: i, title: c.title });
+        }
+    }
+
+    if (greyZoneItems.length === 0) {
+        return candidates;
+    }
+
+    let groqKey = null;
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        try {
+            const stored = await chrome.storage.local.get(['groqKey']);
+            groqKey = stored?.groqKey || null;
+        } catch (e) { }
+    }
+
+    if (!groqKey) {
+        return candidates;
+    }
+
+    const prompt = `Anda adalah Strict Physical-Product Verification Gatekeeper.
+Produk Referensi:
+Judul: "${origTitle}"
+Kategori: "${referenceProduct.category || ''}"
+
+Daftar kandidat produk dalam zona verifikasi:
+${JSON.stringify(greyZoneItems, null, 2)}
+
+Tugas: Evaluasi apakah masing-masing kandidat adalah JENIS FISIK PRODUK YANG SAMA dengan produk referensi (misalnya sama-sama unit kasur/springbed, sama-sama unit laptop, sama-sama unit RAM).
+TOLAK (isSamePhysicalType: false) jika kandidat hanyalah aksesoris, suku cadang, pelindung, sarung, atau kategori fisik yang berbeda.
+Kembalikan HANYA format JSON valid berikut:
+{
+  "adjudications": [
+    { "id": 0, "isSamePhysicalType": true, "reason": "..." }
+  ]
+}`;
+
+    try {
+        const res = await aiClient.requestJson(prompt, groqKey);
+        if (res && Array.isArray(res.adjudications)) {
+            const rejectedIds = new Set();
+            for (const adj of res.adjudications) {
+                if (adj.isSamePhysicalType === false) {
+                    rejectedIds.add(adj.id);
+                }
+            }
+            if (rejectedIds.size > 0) {
+                return candidates.filter((_, idx) => !rejectedIds.has(idx));
+            }
+        }
+    } catch (err) {
+        console.warn('[Gatekeeper:adjudicateCandidatesBatch] LLM adjudication gagal, abaikan filter abu-abu:', err.message);
+    }
+
+    return candidates;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { isCategoryMatch };
+    module.exports = {
+        isCategoryMatch,
+        stripPromoPrefix,
+        computeTokenSimilarity,
+        adjudicateCandidatesBatch,
+        ACCESSORY_HEAD_NOUNS
+    };
 }
 if (typeof window !== 'undefined') {
-    window.Gatekeeper = { isCategoryMatch };
+    window.Gatekeeper = {
+        isCategoryMatch,
+        stripPromoPrefix,
+        computeTokenSimilarity,
+        adjudicateCandidatesBatch,
+        ACCESSORY_HEAD_NOUNS
+    };
 }
