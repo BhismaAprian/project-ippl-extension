@@ -179,14 +179,22 @@
             </div>
         </section>
 
-        <!-- Section 4: Cross-Market Alternatives (Exa + Groq) -->
+        <!-- Section 4: Cross-Market Alternatives (In-House API + Groq AI) -->
         <section id="crossMarketSection" class="card card-cross-market hidden">
             <div class="section-title-wrap">
                 <div class="section-title-group">
                     <h2 class="section-title font-heading">⚡ Alternatif Lintas Marketplace</h2>
-                    <div class="section-subtitle">Ditemukan via Exa Neural Search &amp; Kurasi AI</div>
+                    <div class="section-subtitle">In-House Backend API (Tokopedia, Lazada, Blibli) &amp; Kurasi AI</div>
                 </div>
                 <span id="crossMarketCountBadge" class="status-badge purple">0 Alternatif</span>
+            </div>
+
+            <!-- Backend Offline Warning (NFR-23) -->
+            <div id="backendOfflineNotice" class="risk-alert-box hidden" style="margin-bottom: 10px;">
+                <div class="risk-header">
+                    <span class="risk-icon">⚠️</span>
+                    <span id="backendOfflineText" class="risk-label font-heading">Backend Engine belum berjalan. Jalankan npm start di folder backend.</span>
+                </div>
             </div>
 
             <!-- Loading State for Cross-Market -->
@@ -315,6 +323,7 @@
     <script src="../shared/providers/tokopedia-native-provider.js"></script>
     <script src="../shared/providers/lazada-native-provider.js"></script>
     <script src="../shared/providers/blibli-native-provider.js"></script>
+    <script src="../shared/providers/in-house-backend-provider.js"></script>
     <script src="../shared/providers/exa-provider.js"></script>
     <script src="../shared/search-client.js"></script>
     <script src="sidepanel.js"></script>

@@ -24,7 +24,8 @@
         "https://blibli.com/*",
         "https://www.blibli.com/cari*",
         "https://api.exa.ai/*",
-        "https://api.groq.com/*"
+        "https://api.groq.com/*",
+        "http://localhost:3000/*"
     ],
     "action": {
         "default_icon": {

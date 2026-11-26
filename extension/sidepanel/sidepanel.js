@@ -55,9 +55,11 @@ const els = (typeof document !== 'undefined') ? {
     warrantyDescVal: document.getElementById('warrantyDescVal'),
     warrantyTipsText: document.getElementById('warrantyTipsText'),
 
-    // Smart Cross-Market Deals (Exa + Groq)
+    // Smart Cross-Market Deals (In-House API + Exa Fallback + Groq)
     crossMarketSection: document.getElementById('crossMarketSection'),
     crossMarketCountBadge: document.getElementById('crossMarketCountBadge'),
+    backendOfflineNotice: document.getElementById('backendOfflineNotice'),
+    backendOfflineText: document.getElementById('backendOfflineText'),
     crossMarketLoading: document.getElementById('crossMarketLoading'),
     crossMarketEmpty: document.getElementById('crossMarketEmpty'),
     crossMarketEmptyText: document.getElementById('crossMarketEmptyText'),
@@ -1345,12 +1347,13 @@ async function analyze(tab) {
     })();
 
     // =====================================================================
-    // Branch C: Cross-Market Deals (Exa Neural Search + Groq AI)
-    // Dieksekusi langsung di Side Panel (Bebas dari CSP Halaman Marketplace)
+    // Branch C: Cross-Market Deals (In-House Backend API -> Exa Fallback)
+    // Tokopedia, Lazada, Blibli via localhost:3000; Shopee via Native Phase 3
     // =====================================================================
     show(els.crossMarketSection);
     show(els.crossMarketLoading);
     hide(els.crossMarketEmpty);
+    hide(els.backendOfflineNotice);
 
     const crossMarketPromise = (async () => {
         let aiData = null;
@@ -1364,66 +1367,102 @@ async function analyze(tab) {
         }
 
         let searchResults = [];
-        try {
-            console.log('[SI:Exa] Mencari alternatif produk melalui Exa API...');
-            const searchClient = new window.SearchClient();
-            searchResults = await searchClient.searchAlternatives(product, aiData);
-            console.log(`[SI:Exa] Exa search selesai: ${searchResults.length} kandidat ditemukan.`);
+        let backendOfflineMsg = null;
+        const searchClient = new window.SearchClient();
+        const searchQuery = aiData?.clean_query || aiData?.search_query || product.title || '';
 
-            // Deep Enrichment jika kandidat memiliki harga atau gambar kosong (CR-006 / ADR-09)
-            if (searchResults && searchResults.length > 0 && searchResults.some(c => c.price === null || !c.imageUrl)) {
-                try {
-                    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-                        const enrichRes = await new Promise((resolve) => {
-                            chrome.runtime.sendMessage({
-                                action: 'ENRICH_MISSING_DATA',
-                                candidates: searchResults
-                            }, (res) => resolve(res));
-                        });
-                        if (enrichRes && enrichRes.success && Array.isArray(enrichRes.candidates)) {
-                            searchResults = enrichRes.candidates;
-                        }
+        // 1. Prioritas 2: In-House Multi-Marketplace API Backend (Tokopedia, Lazada, Blibli)
+        if (typeof window.InHouseBackendProvider === 'function') {
+            try {
+                console.log('[SI:Backend] Mencari alternatif via In-House Backend API (localhost:3000)...');
+                const backendProvider = new window.InHouseBackendProvider();
+                const backendCandidates = await backendProvider.search(searchQuery, { marketplace: 'all' });
+
+                const filteredBackend = backendCandidates.filter(c => {
+                    if (typeof searchClient.isCategoryMatch === 'function') {
+                        return searchClient.isCategoryMatch(c.title, aiData, product, c.price);
                     }
-                } catch (enrichErr) {
-                    console.warn('[SI:Exa] Deep Enrichment crossMarket error:', enrichErr);
+                    return true;
+                });
+
+                searchResults = filteredBackend.length > 0 ? filteredBackend : backendCandidates;
+                console.log(`[SI:Backend] Backend API selesai: ${searchResults.length} kandidat ditemukan.`);
+            } catch (backendErr) {
+                console.warn('[SI:Backend] Backend API error:', backendErr.message);
+                backendOfflineMsg = 'Backend Engine belum berjalan. Jalankan npm start di folder backend.';
+                if (els.backendOfflineText) {
+                    els.backendOfflineText.textContent = backendOfflineMsg;
                 }
-            }
-
-            // Telemetry Debug Audit (CR-006)
-            const countByMarket = (items, filterFn = () => true) => {
-                const counts = { shopee: 0, tokopedia: 0, lazada: 0, blibli: 0 };
-                for (const it of items) {
-                    if (!filterFn(it)) continue;
-                    const m = (it.marketplace || it.source || (it.url ? new window.SearchClient().getMarketplace(it.url) : '')).toLowerCase();
-                    for (const k of Object.keys(counts)) {
-                        if (m.includes(k)) counts[k]++;
-                    }
-                }
-                return counts;
-            };
-
-            const tierQuery = aiData?.clean_query || aiData?.search_query || product.title;
-            console.info('[ShoppingIntel:SearchAudit]', {
-                tier: 'cross-market-exa',
-                query: tierQuery,
-                tierQueries: [tierQuery],
-                rawPerMarketplace: countByMarket(searchResults),
-                pdpFilterPassed: countByMarket(searchResults, it => it.isDirectProduct !== false),
-                gatekeeperPassed: countByMarket(searchResults),
-                afterDeepEnrichment: countByMarket(searchResults, it => it.price !== null || it.imageUrl)
-            });
-
-        } catch (e) {
-            console.error('[SI:Exa] Search alternatives error:', e);
-            if (els.crossMarketEmptyText) {
-                els.crossMarketEmptyText.textContent = `Pencarian Exa gagal: ${e.message}`;
+                show(els.backendOfflineNotice);
             }
         }
+
+        // 2. Prioritas 5 (Cadangan Terakhir): Exa API jika hasil backend kosong
+        if (searchResults.length === 0) {
+            try {
+                const { exaKey } = await chrome.storage.local.get(['exaKey']);
+                if (exaKey) {
+                    console.log('[SI:Exa] Fallback terakhir: mencari alternatif melalui Exa API...');
+                    searchResults = await searchClient.searchAlternatives(product, aiData);
+                    console.log(`[SI:Exa] Exa fallback selesai: ${searchResults.length} kandidat ditemukan.`);
+
+                    if (searchResults && searchResults.length > 0 && searchResults.some(c => c.price === null || !c.imageUrl)) {
+                        try {
+                            if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+                                const enrichRes = await new Promise((resolve) => {
+                                    chrome.runtime.sendMessage({
+                                        action: 'ENRICH_MISSING_DATA',
+                                        candidates: searchResults
+                                    }, (res) => resolve(res));
+                                });
+                                if (enrichRes && enrichRes.success && Array.isArray(enrichRes.candidates)) {
+                                    searchResults = enrichRes.candidates;
+                                }
+                            }
+                        } catch (enrichErr) {
+                            console.warn('[SI:Exa] Deep Enrichment crossMarket error:', enrichErr);
+                        }
+                    }
+                } else if (backendOfflineMsg && els.crossMarketEmptyText) {
+                    els.crossMarketEmptyText.textContent = backendOfflineMsg;
+                }
+            } catch (e) {
+                console.error('[SI:Exa] Search alternatives fallback error:', e);
+                if (els.crossMarketEmptyText) {
+                    els.crossMarketEmptyText.textContent = backendOfflineMsg
+                        ? `${backendOfflineMsg} (Exa fallback: ${e.message})`
+                        : `Pencarian alternatif gagal: ${e.message}`;
+                }
+            }
+        }
+
+        // Telemetry Debug Audit
+        const countByMarket = (items, filterFn = () => true) => {
+            const counts = { shopee: 0, tokopedia: 0, lazada: 0, blibli: 0 };
+            for (const it of items) {
+                if (!filterFn(it)) continue;
+                const m = (it.marketplace || it.source || (it.url ? searchClient.getMarketplace(it.url) : '')).toLowerCase();
+                for (const k of Object.keys(counts)) {
+                    if (m.includes(k)) counts[k]++;
+                }
+            }
+            return counts;
+        };
+
+        console.info('[ShoppingIntel:SearchAudit]', {
+            tier: searchResults.some(r => r.provenance === 'in-house-backend-api') ? 'in-house-backend-api' : 'exa-fallback',
+            query: searchQuery,
+            tierQueries: [searchQuery],
+            rawPerMarketplace: countByMarket(searchResults),
+            pdpFilterPassed: countByMarket(searchResults, it => it.isDirectProduct !== false),
+            gatekeeperPassed: countByMarket(searchResults),
+            afterDeepEnrichment: countByMarket(searchResults, it => it.price !== null || it.imageUrl)
+        });
 
         let evaluation = null;
         if (searchResults && searchResults.length > 0) {
             try {
-                console.log('[SI:AI] Mengevaluasi kandidat deals dengan Groq AI (Strict Category Gatekeeper)...');
+                console.log('[SI:AI] Mengevaluasi kandidat deals dengan Groq AI...');
                 const ai = new window.AIClient();
                 evaluation = await ai.evaluateDeals(product, searchResults, aiData);
                 console.log('[SI:AI] evaluateDeals sukses:', evaluation);
@@ -1435,6 +1474,12 @@ async function analyze(tab) {
         renderCrossMarketDeals(evaluation, searchResults, product.price);
         if (searchResults && searchResults.length > 0) {
             renderNativeCandidates(searchResults);
+        } else if (backendOfflineMsg && els.searchResults) {
+            els.searchResults.innerHTML = `
+                <div class="marketplace-empty-notice font-heading" style="font-size: 0.82rem; color: #B91C1C; padding: 14px 12px; text-align: center; border: 2px solid #FCA5A5; border-radius: 12px; background: #FEF2F2;">
+                    ⚠️ ${backendOfflineMsg}
+                </div>
+            `;
         }
         return { aiData, searchResults, evaluation };
     })();
