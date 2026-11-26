@@ -1377,6 +1377,171 @@ h4,
     background: #FFFFFF;
 }
 
+/* ============================================================
+   Marketplace Sections Tab & Card (CR-005) - Playful Geometric
+   ============================================================ */
+
+.marketplace-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+}
+
+.marketplace-tabs::-webkit-scrollbar {
+    height: 4px;
+}
+
+.marketplace-tabs::-webkit-scrollbar-thumb {
+    background: var(--fg-slate);
+    border-radius: 4px;
+}
+
+.marketplace-tab-btn {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 0.76rem;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 2px solid var(--border-color);
+    background: #FFFFFF;
+    color: var(--fg-slate);
+    cursor: pointer;
+    box-shadow: none;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+}
+
+.marketplace-tab-btn:hover {
+    background: var(--muted);
+}
+
+/* Tab yang aktif memiliki hard shadow dan border tebal */
+.marketplace-tab-btn.active {
+    background: var(--accent-yellow);
+    border: 2.5px solid var(--border-color);
+    box-shadow: 3px 3px 0px var(--border-color);
+    font-weight: 900;
+    transform: translate(-1px, -1px);
+}
+
+.marketplace-results-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.marketplace-candidate-card {
+    background: var(--card-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: var(--shadow-solid-sm);
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+}
+
+.marketplace-candidate-card:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0px var(--border-color);
+}
+
+/* Kotak Gambar Produk (Border Hitam 2px) */
+.marketplace-candidate-img {
+    width: 68px;
+    height: 68px;
+    border-radius: 8px;
+    border: 2px solid #000000;
+    object-fit: cover;
+    background: #F8FAFC;
+    flex-shrink: 0;
+}
+
+.marketplace-candidate-img-placeholder {
+    width: 68px;
+    height: 68px;
+    border-radius: 8px;
+    border: 2px solid #000000;
+    background: #F1F5F9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.marketplace-candidate-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.marketplace-candidate-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.marketplace-candidate-shop {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--muted-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.marketplace-candidate-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--fg-slate);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.marketplace-candidate-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 2px;
+}
+
+.marketplace-candidate-price {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 900;
+    color: #EE4D2D;
+}
+
+.marketplace-candidate-rating {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--fg-slate);
+}
+
+.marketplace-candidate-link {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #0284C7;
+    text-decoration: underline;
+    margin-top: 2px;
+    display: inline-block;
+}
+
+.marketplace-empty-notice {
+    font-family: 'Outfit', sans-serif;
+}
+
 /* Utility */
 .hidden {
     display: none !important;

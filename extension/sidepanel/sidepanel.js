@@ -11,7 +11,7 @@
  */
 
 // === Elemen DOM Side Panel ===
-const els = {
+const els = (typeof document !== 'undefined') ? {
     version: document.getElementById('version'),
     reanalyzeBtn: document.getElementById('reanalyzeBtn'),
     loadingState: document.getElementById('loadingState'),
@@ -85,8 +85,9 @@ const els = {
     searchProgressText: document.getElementById('search-progress-text'),
     searchBlocked: document.getElementById('search-blocked'),
     manualOpenLink: document.getElementById('manual-open-link'),
+    marketplaceTabs: document.getElementById('marketplace-tabs'),
     searchResults: document.getElementById('search-results')
-};
+} : {};
 
 // Versi Manifest
 try {
@@ -1008,7 +1009,7 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         const hasPrice = o.price && o.price >= 100;
                         const priceDisplay = hasPrice
                             ? `<span class="other-deal-price">${formatPrice(o.price)}</span>`
-                            : `<span class="deal-card-check-price">Cek Harga di Toko</span>`;
+                            : `<span class="deal-card-check-price">Lihat Harga di Toko</span>`;
 
                         return `
                             <div class="other-deal-item">
@@ -1092,7 +1093,7 @@ function renderCrossMarketDeals(evaluation, searchResults = [], originalPrice = 
                         const hasPrice = o.price && o.price >= 100;
                         const priceDisplay = hasPrice
                             ? `<span class="other-deal-price">${formatPrice(o.price)}</span>`
-                            : `<span class="deal-card-check-price">Cek Harga di Toko</span>`;
+                            : `<span class="deal-card-check-price">Lihat Harga di Toko</span>`;
 
                         return `
                             <div class="other-deal-item">
@@ -1149,6 +1150,9 @@ function renderAll(data, tabId) {
     }
 
     renderCrossMarketDeals(evaluation, searchResults || [], product.price || 0);
+    if (searchResults && searchResults.length > 0) {
+        renderNativeCandidates(searchResults);
+    }
 
     if (ultimateDeal) {
         renderDealChecker(ultimateDeal);
@@ -1365,6 +1369,50 @@ async function analyze(tab) {
             const searchClient = new window.SearchClient();
             searchResults = await searchClient.searchAlternatives(product, aiData);
             console.log(`[SI:Exa] Exa search selesai: ${searchResults.length} kandidat ditemukan.`);
+
+            // Deep Enrichment jika kandidat memiliki harga atau gambar kosong (CR-006 / ADR-09)
+            if (searchResults && searchResults.length > 0 && searchResults.some(c => c.price === null || !c.imageUrl)) {
+                try {
+                    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+                        const enrichRes = await new Promise((resolve) => {
+                            chrome.runtime.sendMessage({
+                                action: 'ENRICH_MISSING_DATA',
+                                candidates: searchResults
+                            }, (res) => resolve(res));
+                        });
+                        if (enrichRes && enrichRes.success && Array.isArray(enrichRes.candidates)) {
+                            searchResults = enrichRes.candidates;
+                        }
+                    }
+                } catch (enrichErr) {
+                    console.warn('[SI:Exa] Deep Enrichment crossMarket error:', enrichErr);
+                }
+            }
+
+            // Telemetry Debug Audit (CR-006)
+            const countByMarket = (items, filterFn = () => true) => {
+                const counts = { shopee: 0, tokopedia: 0, lazada: 0, blibli: 0 };
+                for (const it of items) {
+                    if (!filterFn(it)) continue;
+                    const m = (it.marketplace || it.source || (it.url ? new window.SearchClient().getMarketplace(it.url) : '')).toLowerCase();
+                    for (const k of Object.keys(counts)) {
+                        if (m.includes(k)) counts[k]++;
+                    }
+                }
+                return counts;
+            };
+
+            const tierQuery = aiData?.clean_query || aiData?.search_query || product.title;
+            console.info('[ShoppingIntel:SearchAudit]', {
+                tier: 'cross-market-exa',
+                query: tierQuery,
+                tierQueries: [tierQuery],
+                rawPerMarketplace: countByMarket(searchResults),
+                pdpFilterPassed: countByMarket(searchResults, it => it.isDirectProduct !== false),
+                gatekeeperPassed: countByMarket(searchResults),
+                afterDeepEnrichment: countByMarket(searchResults, it => it.price !== null || it.imageUrl)
+            });
+
         } catch (e) {
             console.error('[SI:Exa] Search alternatives error:', e);
             if (els.crossMarketEmptyText) {
@@ -1385,6 +1433,9 @@ async function analyze(tab) {
         }
 
         renderCrossMarketDeals(evaluation, searchResults, product.price);
+        if (searchResults && searchResults.length > 0) {
+            renderNativeCandidates(searchResults);
+        }
         return { aiData, searchResults, evaluation };
     })();
 
@@ -1478,6 +1529,17 @@ async function init() {
         els.exaSearchBtn.addEventListener('click', onExaSearchClick);
     }
 
+    // Inisialisasi Tab Navigation Marketplace (CR-005)
+    const tabBtns = document.querySelectorAll('.marketplace-tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeMarketplaceTab = btn.getAttribute('data-source') || 'all';
+            renderMarketplaceTabResults();
+        });
+    });
+
     const tab = await getActiveTab();
     if (!tab) {
         renderError('Tidak ada tab aktif.');
@@ -1498,55 +1560,157 @@ async function init() {
     await analyzeAndCache(tab);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', init);
+}
 
 // =========================================================================
 // SECTION 6: NATIVE SEARCH PROTOCOL ORCHESTRATION (PHASE 3)
 // =========================================================================
 
-function renderNativeCandidates(candidates = []) {
+// State untuk Tabbed Marketplace Navigation (CR-005)
+let currentCandidatesList = [];
+let activeMarketplaceTab = 'all';
+
+/**
+ * Mengelompokkan kandidat produk berdasarkan marketplace sumber (CR-005)
+ * @param {Array<object>} candidates 
+ * @returns {{ all: Array, shopee: Array, tokopedia: Array, lazada: Array, blibli: Array, exa: Array }}
+ */
+function groupCandidatesBySource(candidates) {
+    const groups = {
+        all: [],
+        shopee: [],
+        tokopedia: [],
+        lazada: [],
+        blibli: [],
+        exa: []
+    };
+
+    if (!Array.isArray(candidates)) return groups;
+
+    for (const cand of candidates) {
+        if (!cand) continue;
+        groups.all.push(cand);
+
+        const src = (cand.source || cand.marketplace || '').toLowerCase().trim();
+        const prov = (cand.provenance || '').toLowerCase().trim();
+
+        if (src.includes('shopee')) {
+            groups.shopee.push(cand);
+        } else if (src.includes('tokopedia') || src.includes('tokped')) {
+            groups.tokopedia.push(cand);
+        } else if (src.includes('lazada')) {
+            groups.lazada.push(cand);
+        } else if (src.includes('blibli')) {
+            groups.blibli.push(cand);
+        } else if (src === 'exa') {
+            groups.exa.push(cand);
+        }
+
+        // Kandidat dari Exa Fallback juga dimasukkan ke tab Exa
+        if (prov === 'exa-fallback' && src !== 'exa') {
+            groups.exa.push(cand);
+        }
+    }
+
+    return groups;
+}
+
+/**
+ * Membuat kartu produk alternatif dengan gaya Playful Geometric (CR-005)
+ * WAJIB menampilkan: Gambar produk (kotak border hitam 2px), Judul, Harga, Rating, dan Nama Toko.
+ */
+function createCandidateCard(cand, showMarketplaceBadge = false) {
+    const item = document.createElement('div');
+    item.className = 'marketplace-candidate-card';
+
+    const formattedPrice = (cand.price && cand.price >= 100)
+        ? formatPrice(cand.price)
+        : 'Lihat Harga di Toko';
+
+    const ratingBadge = (cand.rating && cand.rating > 0)
+        ? `⭐ ${Number(cand.rating).toFixed(1)}`
+        : '⭐ -';
+
+    const shopName = cand.shopName
+        || cand.seller
+        || cand.raw?.shop_name
+        || cand.raw?.seller
+        || 'Toko Resmi';
+
+    const rawMarket = cand.marketplace || cand.source || (cand.url ? new window.SearchClient().getMarketplace(cand.url) : 'Marketplace');
+    const market = getMarketplaceBadge(rawMarket);
+
+    // Kotak Gambar Produk (border hitam 2px solid)
+    const imgHtml = cand.imageUrl
+        ? `<img src="${cand.imageUrl}" alt="${cand.title || 'Produk'}" class="marketplace-candidate-img" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" /><div class="marketplace-candidate-img-placeholder" style="display:none;">${PRODUCT_FALLBACK_SVG}</div>`
+        : `<div class="marketplace-candidate-img-placeholder">${PRODUCT_FALLBACK_SVG}</div>`;
+
+    const badgeHtml = showMarketplaceBadge
+        ? `<span class="badge-marketplace ${market.cls}" style="font-size: 0.65rem;">${market.label}</span>`
+        : '';
+
+    const cleanMarketLabel = market.label.replace(/^[^\w\s]+/, '').trim() || 'Toko';
+
+    item.innerHTML = `
+        ${imgHtml}
+        <div class="marketplace-candidate-info">
+            <div class="marketplace-candidate-meta-row">
+                ${badgeHtml}
+                <span class="marketplace-candidate-shop" title="${shopName}">🏪 ${shopName}</span>
+            </div>
+            <div class="marketplace-candidate-title" title="${cand.title || ''}">
+                ${cand.title || 'Tanpa Judul'}
+            </div>
+            <div class="marketplace-candidate-bottom-row">
+                <span class="marketplace-candidate-price">${formattedPrice}</span>
+                <span class="marketplace-candidate-rating">${ratingBadge}</span>
+            </div>
+            <a href="${cand.url || '#'}" target="_blank" rel="noopener noreferrer" class="marketplace-candidate-link">
+                Buka di ${cleanMarketLabel} ↗
+            </a>
+        </div>
+    `;
+    return item;
+}
+
+/**
+ * Merender daftar hasil kandidat berdasarkan tab marketplace yang aktif (CR-005)
+ */
+function renderMarketplaceTabResults() {
     if (!els.searchResults) return;
     els.searchResults.innerHTML = '';
 
-    if (!candidates || candidates.length === 0) {
+    const groups = groupCandidatesBySource(currentCandidatesList);
+    const activeCandidates = groups[activeMarketplaceTab] || [];
+
+    if (activeCandidates.length === 0) {
+        let emptyMsg = 'Tidak ada produk alternatif ditemukan.';
+        if (activeMarketplaceTab === 'shopee') emptyMsg = 'Tidak ada produk ditemukan di Shopee';
+        else if (activeMarketplaceTab === 'tokopedia') emptyMsg = 'Tidak ada produk ditemukan di Tokopedia';
+        else if (activeMarketplaceTab === 'lazada') emptyMsg = 'Tidak ada produk ditemukan di Lazada';
+        else if (activeMarketplaceTab === 'blibli') emptyMsg = 'Tidak ada produk ditemukan di Blibli';
+        else if (activeMarketplaceTab === 'exa') emptyMsg = 'Tidak ada produk ditemukan di Exa';
+
         els.searchResults.innerHTML = `
-            <div style="font-size: 0.8rem; color: #64748B; padding: 8px 0;">
-                Tidak ada kandidat produk yang lolos validasi dari Shopee.
+            <div class="marketplace-empty-notice font-heading" style="font-size: 0.82rem; color: #64748B; padding: 18px 12px; text-align: center; border: 2px dashed #CBD5E1; border-radius: 12px; background: #F8FAFC;">
+                ${emptyMsg}
             </div>
         `;
         return;
     }
 
-    candidates.forEach(cand => {
-        const item = document.createElement('div');
-        item.className = 'native-candidate-card';
-        const formattedPrice = cand.price ? formatPrice(cand.price) : 'Harga tidak tersedia';
-        const ratingBadge = cand.rating ? `⭐ ${cand.rating.toFixed(1)}` : '';
-        const soldText = cand.sold ? `· ${cand.sold} terjual` : '';
-        const locText = cand.location ? `📍 ${cand.location}` : '';
-
-        item.innerHTML = `
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-                <span class="badge-marketplace badge-shopee" style="font-size: 0.65rem;">🟠 Shopee Native</span>
-                <span style="font-size: 0.7rem; color: #64748B; font-weight: 600;">${locText}</span>
-            </div>
-            <div style="font-size: 0.8rem; font-weight: 700; color: var(--fg-slate); line-height: 1.3;">
-                ${cand.title}
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
-                <span style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 800; color: #EE4D2D;">
-                    ${formattedPrice}
-                </span>
-                <span style="font-size: 0.72rem; color: #475569; font-weight: 600;">
-                    ${ratingBadge} ${soldText}
-                </span>
-            </div>
-            <a href="${cand.url || '#'}" target="_blank" rel="noopener noreferrer" style="font-size: 0.74rem; color: #0284C7; font-weight: 700; text-decoration: underline; margin-top: 2px;">
-                Buka di Shopee ↗
-            </a>
-        `;
-        els.searchResults.appendChild(item);
+    const showBadge = (activeMarketplaceTab === 'all');
+    activeCandidates.forEach(cand => {
+        const card = createCandidateCard(cand, showBadge);
+        els.searchResults.appendChild(card);
     });
+}
+
+function renderNativeCandidates(candidates = []) {
+    currentCandidatesList = Array.isArray(candidates) ? candidates : [];
+    renderMarketplaceTabResults();
 }
 
 async function onNativeSearchClick() {
@@ -1674,9 +1838,55 @@ async function onExaSearchClick() {
             rawProduct: product
         });
 
-        const normalized = rawResults.map(r => {
+        let normalized = rawResults.map(r => {
             return window.CandidateNormalizer.normalizeCandidate(r, r.marketplace, 'exa-fallback');
         }).filter(Boolean);
+
+        // Deep Enrichment trigger untuk kandidat tanpa harga / gambar (ADR-09 / CR-006)
+        if (normalized.some(c => c.price === null || !c.imageUrl)) {
+            if (els.searchProgressText) {
+                els.searchProgressText.textContent = 'Mengambil detail harga & gambar (Deep Enrichment)...';
+            }
+            try {
+                if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+                    const enrichRes = await new Promise((resolve) => {
+                        chrome.runtime.sendMessage({
+                            action: 'ENRICH_MISSING_DATA',
+                            candidates: normalized
+                        }, (res) => resolve(res));
+                    });
+                    if (enrichRes && enrichRes.success && Array.isArray(enrichRes.candidates)) {
+                        normalized = enrichRes.candidates;
+                    }
+                }
+            } catch (enrichErr) {
+                console.warn('[SI:Exa] Deep Enrichment failed or skipped:', enrichErr);
+            }
+        }
+
+        // Telemetry Audit Logging (CR-006)
+        const auditData = exaProvider.lastSearchAudit || {};
+        const countByMarket = (items, filterFn = () => true) => {
+            const counts = { shopee: 0, tokopedia: 0, lazada: 0, blibli: 0 };
+            for (const it of items) {
+                if (!filterFn(it)) continue;
+                const m = (it.marketplace || it.source || (it.url ? new window.SearchClient().getMarketplace(it.url) : '')).toLowerCase();
+                for (const k of Object.keys(counts)) {
+                    if (m.includes(k)) counts[k]++;
+                }
+            }
+            return counts;
+        };
+
+        console.info('[ShoppingIntel:SearchAudit]', {
+            tier: 'exa-fallback',
+            query: auditData.query || aiData?.clean_query || product.title,
+            tierQueries: auditData.tierQueries || [auditData.query || product.title],
+            rawPerMarketplace: auditData.rawPerMarketplace || countByMarket(rawResults),
+            pdpFilterPassed: auditData.pdpFilterPassed || countByMarket(rawResults),
+            gatekeeperPassed: auditData.gatekeeperPassed || countByMarket(normalized),
+            afterDeepEnrichment: countByMarket(normalized, it => it.price !== null || it.imageUrl)
+        });
 
         hide(els.searchProgress);
         renderNativeCandidates(normalized);
@@ -1709,8 +1919,20 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
 }
 
 // Auto-cancel on Sidepanel Unload / Close
-window.addEventListener('pagehide', () => {
-    try {
-        chrome.runtime.sendMessage({ action: 'CANCEL_NATIVE_SEARCH', reason: 'sidepanel_closed' });
-    } catch (e) { }
-});
+if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => {
+        try {
+            chrome.runtime.sendMessage({ action: 'CANCEL_NATIVE_SEARCH', reason: 'sidepanel_closed' });
+        } catch (e) { }
+    });
+
+    window.groupCandidatesBySource = groupCandidatesBySource;
+    window.renderNativeCandidates = renderNativeCandidates;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        groupCandidatesBySource,
+        renderNativeCandidates
+    };
+}
