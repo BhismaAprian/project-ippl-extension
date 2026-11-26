@@ -17,7 +17,7 @@ Sistem menganalisis data internal produk, mengaudit ulasan pembeli, memverifikas
 
 Pengembangan proyek ini dikendalikan oleh dokumen spesifikasi master di direktori utama:
 
-- **[SPEC.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/SPEC.md):** Spesifikasi sistem lengkap (14 seksi master: FR-01 s/d FR-27, NFR-01 s/d NFR-22, ADR-01 s/d ADR-08, dan Data Contracts).
+- **[SPEC.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/SPEC.md):** Spesifikasi sistem lengkap (14 seksi master: FR-01 s/d FR-27, NFR-01 s/d NFR-23, ADR-01 s/d ADR-14, dan Data Contracts).
 - **[ARCHITECTURE.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/ARCHITECTURE.md):** Arsitektur teknis mendalam, diagram alur IPC, siklus hidup tab *Brief Active Window*, dan *Provider Registry*.
 - **[TASKS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/TASKS.md):** Rincian pekerjaan per fase (Phase 1–3 DONE, Phase 4–5 TODO) beserta perintah pembuktian otomatis (*Proof Command*).
 - **[AGENTS.md](file:///home/bhisma/Documents/GitHub/project-ippl-extension/AGENTS.md):** Aturan operasional, hierarki otoritas (SPEC > ARCHITECTURE > TASKS), dan protokol sesi pengembangan.
@@ -37,25 +37,20 @@ Ekstensi ini dibangun menggunakan Vanilla JavaScript tanpa proses kompilasi bund
 
 ---
 
-## 4. Cara Menjalankan In-House Scraping Engine (Backend Mandiri)
+## 4. Cara Menjalankan In-House Multi-Marketplace API Backend (CR-007)
 
-Untuk pencarian produk yang mandiri, efisien, dan tidak bergantung pada pembukaan tab peramban visual, jalankan backend scraping internal:
+Untuk pencarian produk lintas marketplace (**Tokopedia**, **Lazada**, dan **Blibli**) tanpa pembukaan tab peramban dan tanpa bergantung pada Exa API sebagai sumber utama, jalankan backend lokal (`http://localhost:3000`):
 
 ```bash
 # Masuk ke direktori backend dan pasang dependensi
-cd backend
-npm install
-
-# Jalankan server API pencarian (berjalan di port 3000)
-npm start
+cd backend && npm install && npm start
 ```
 
-Server aktif di `http://localhost:3000`. Ekstensi akan secara otomatis mengarahkan pencarian produk ke backend ini terlebih dahulu. Jika server backend tidak sedang dijalankan, ekstensi secara otomatis beralih ke metode pencarian tab peramban.
+Server aktif di `http://localhost:3000` (endpoint `GET /api/health` dan `POST /api/search`). Khusus **Shopee**, pencarian tetap dijalankan melalui Native Extension (Phase 3). Apabila backend lokal tidak sedang berjalan, Side Panel ekstensi akan menampilkan pemberitahuan: *"Backend Engine belum berjalan. Jalankan npm start di folder backend."* (`NFR-23`) tanpa membuat antarmuka crash.
 
 Untuk menjalankan pengujian unit backend:
 ```bash
-cd backend
-npm test
+node --test backend/test/*.test.js
 ```
 
 ---
