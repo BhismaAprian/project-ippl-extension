@@ -157,7 +157,14 @@ class BlibliAdapter extends BaseClass {
             }
 
             if (!productData.imageUrl) {
-                productData.imageUrl = document.querySelector('meta[property="og:image"]')?.getAttribute('content') || null;
+                const ogImg = document.querySelector('meta[property="og:image"]')?.getAttribute('content')
+                    || document.querySelector('meta[property="og:image:secure_url"]')?.getAttribute('content')
+                    || document.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+                if (ogImg && typeof ogImg === 'string' && ogImg.trim()) {
+                    let cImg = ogImg.trim();
+                    if (cImg.startsWith('//')) cImg = 'https:' + cImg;
+                    if (/^https?:\/\//i.test(cImg)) productData.imageUrl = cImg;
+                }
             }
 
             if (!productData.description) {
@@ -169,7 +176,7 @@ class BlibliAdapter extends BaseClass {
                 if (ogUrl) productData.url = ogUrl;
             }
 
-            // Schema.org fallback
+            // Schema.org fallback (offers.price / offers.lowPrice & image) (CR-006)
             const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
             for (const script of jsonLdScripts) {
                 try {
@@ -178,11 +185,36 @@ class BlibliAdapter extends BaseClass {
                     const data = JSON.parse(text);
                     if (data['@type'] === 'Product' || data['@type'] === 'https://schema.org/Product') {
                         if (!productData.title && data.name) productData.title = String(data.name).trim();
-                        if (productData.price === null && data.offers?.price) {
-                            productData.price = Math.round(parseFloat(data.offers.price));
+                        if (productData.price === null && data.offers) {
+                            const offer = Array.isArray(data.offers) ? data.offers[0] : data.offers;
+                            const pRaw = offer?.price !== undefined ? offer.price : offer?.lowPrice;
+                            if (pRaw !== undefined && pRaw !== null) {
+                                const parsed = Math.round(parseFloat(pRaw));
+                                if (!isNaN(parsed) && parsed > 0) productData.price = parsed;
+                            }
+                        }
+                        if (!productData.imageUrl && data.image) {
+                            const rawImg = Array.isArray(data.image)
+                                ? data.image[0]
+                                : (typeof data.image === 'object' ? data.image.url : data.image);
+                            if (typeof rawImg === 'string' && rawImg.trim()) {
+                                let cImg = rawImg.trim();
+                                if (cImg.startsWith('//')) cImg = 'https:' + cImg;
+                                if (/^https?:\/\//i.test(cImg)) productData.imageUrl = cImg;
+                            }
                         }
                     }
                 } catch (e) { }
+            }
+
+            // OpenGraph price fallback
+            if (productData.price === null) {
+                const priceMeta = document.querySelector('meta[property="product:price:amount"]')?.getAttribute('content')
+                    || document.querySelector('meta[property="og:price:amount"]')?.getAttribute('content');
+                if (priceMeta) {
+                    const parsedP = Math.round(parseFloat(priceMeta));
+                    if (!isNaN(parsedP) && parsedP > 0) productData.price = parsedP;
+                }
             }
 
             // --- Layer 3: Direct DOM Fallback ---

@@ -207,13 +207,13 @@ async function runTests() {
         assert.strictEqual(enriched[0].enriched, true);
     });
 
-    await itAsync('enrichMissingData membatasi maksimal 3 kandidat per pemanggilan pencarian', async () => {
+    await itAsync('enrichMissingData membatasi maksimal 4 kandidat per pemanggilan pencarian (CR-006: 4 tab)', async () => {
         const { mockChrome, getTabCreationLog } = createMockChrome();
         global.chrome = mockChrome;
 
         const { enrichMissingData } = require('../extension/background/service-worker.js');
 
-        // 5 kandidat eligible
+        // 5 kandidat eligible dari marketplace yang sama
         const candidates = [
             { id: 1, title: 'Produk 1', price: null, matchType: 'EXACT', url: 'https://blibli.com/p/item-1' },
             { id: 2, title: 'Produk 2', price: null, matchType: 'EQUIVALENT', url: 'https://blibli.com/p/item-2' },
@@ -225,12 +225,40 @@ async function runTests() {
         const enriched = await enrichMissingData(candidates);
 
         const tabLog = getTabCreationLog();
-        assert.strictEqual(tabLog.length, 3, 'Maksimal 3 tab yang boleh dibuat');
+        assert.strictEqual(tabLog.length, 4, 'Maksimal 4 tab yang boleh dibuat');
         assert.strictEqual(enriched[0].price, 2799000);
         assert.strictEqual(enriched[1].price, 2799000);
         assert.strictEqual(enriched[2].price, 2799000);
-        assert.strictEqual(enriched[3].price, null, 'Kandidat ke-4 tidak boleh dibuka tab-nya');
+        assert.strictEqual(enriched[3].price, 2799000);
         assert.strictEqual(enriched[4].price, null, 'Kandidat ke-5 tidak boleh dibuka tab-nya');
+    });
+
+    await itAsync('enrichMissingData memprioritaskan 1 kandidat per marketplace yang null (CR-006: multi-marketplace)', async () => {
+        const { mockChrome, getTabCreationLog } = createMockChrome();
+        global.chrome = mockChrome;
+
+        const { enrichMissingData } = require('../extension/background/service-worker.js');
+
+        // Banyak produk Tokopedia di awal, disusul Shopee, Lazada, Blibli
+        const candidates = [
+            { id: 1, title: 'Tokped 1', price: null, matchType: 'EXACT', url: 'https://tokopedia.com/toko/p1' },
+            { id: 2, title: 'Tokped 2', price: null, matchType: 'EXACT', url: 'https://tokopedia.com/toko/p2' },
+            { id: 3, title: 'Tokped 3', price: null, matchType: 'EXACT', url: 'https://tokopedia.com/toko/p3' },
+            { id: 4, title: 'Shopee 1', price: null, matchType: 'SIMILAR', url: 'https://shopee.co.id/item-sp1' },
+            { id: 5, title: 'Lazada 1', price: null, matchType: 'EXACT', url: 'https://lazada.co.id/products/item-lz1.html' },
+            { id: 6, title: 'Blibli 1', price: null, matchType: 'EQUIVALENT', url: 'https://blibli.com/p/item-bl1' }
+        ];
+
+        const enriched = await enrichMissingData(candidates);
+        const tabLog = getTabCreationLog();
+
+        // Wajib 4 tab: 1 Tokped, 1 Shopee, 1 Lazada, 1 Blibli
+        assert.strictEqual(tabLog.length, 4, 'Tepat 4 tab dibuka untuk 4 marketplace berbeda');
+        const openedUrls = tabLog.map(t => t.url);
+        assert.ok(openedUrls.some(u => u.includes('tokopedia.com')), 'Tokopedia terwakili');
+        assert.ok(openedUrls.some(u => u.includes('shopee.co.id')), 'Shopee terwakili');
+        assert.ok(openedUrls.some(u => u.includes('lazada.co.id')), 'Lazada terwakili');
+        assert.ok(openedUrls.some(u => u.includes('blibli.com')), 'Blibli terwakili');
     });
 
     console.log('\n=== TEST SUITE 2: SEKUENSIAL, ACTIVE: FALSE, DAN CLEANUP FINALLY ===');

@@ -400,8 +400,8 @@ async function enrichSingleCandidatePdp(candidate) {
 }
 
 /**
- * Melakukan Deep Enrichment untuk kandidat yang memiliki harga atau gambar kosong (ADR-09 & ADR-11)
- * Membuka tab tersembunyi (active: false) secara sekuensial (maksimal 3 kandidat)
+ * Melakukan Deep Enrichment untuk kandidat yang memiliki harga atau gambar kosong (ADR-09, ADR-11, CR-006)
+ * Membuka tab tersembunyi (active: false) secara sekuensial (maksimal 4 kandidat, 1 per marketplace)
  * @param {Array<object>} candidates 
  * @returns {Promise<Array<object>>}
  */
@@ -410,28 +410,63 @@ async function enrichMissingData(candidates) {
         return candidates || [];
     }
 
-    // Filter kandidat: (price === null/0 || !imageUrl) DAN matchType adalah 'EXACT' atau 'EQUIVALENT'
-    const eligibleIndices = [];
+    const getMarket = (c) => {
+        const s = (c?.source || c?.marketplace || '').toLowerCase();
+        if (s.includes('shopee')) return 'shopee';
+        if (s.includes('tokopedia') || s.includes('tokped')) return 'tokopedia';
+        if (s.includes('lazada')) return 'lazada';
+        if (s.includes('blibli')) return 'blibli';
+        if (c?.url) {
+            const u = c.url.toLowerCase();
+            if (u.includes('shopee')) return 'shopee';
+            if (u.includes('tokopedia')) return 'tokopedia';
+            if (u.includes('lazada')) return 'lazada';
+            if (u.includes('blibli')) return 'blibli';
+        }
+        return 'other';
+    };
+
+    // Filter kandidat: (price === null/0 || !imageUrl) DAN matchType adalah 'EXACT', 'EQUIVALENT', atau 'SIMILAR'
+    const eligibleList = [];
     for (let i = 0; i < candidates.length; i++) {
         const c = candidates[i];
         const isDataMissing = c && (c.price === null || c.price === undefined || c.price === 0 || !c.imageUrl);
-        const isMatchEligible = c && (c.matchType === 'EXACT' || c.matchType === 'EQUIVALENT');
+        const isMatchEligible = c && (!c.matchType || ['EXACT', 'EQUIVALENT', 'SIMILAR'].includes(c.matchType));
         const hasUrl = c && typeof c.url === 'string' && c.url.trim().length > 0;
 
         if (isDataMissing && isMatchEligible && hasUrl) {
-            eligibleIndices.push(i);
-            if (eligibleIndices.length >= 3) {
-                // Batasi maksimal 3 kandidat per pencarian
-                break;
+            eligibleList.push({ index: i, candidate: c, market: getMarket(c) });
+        }
+    }
+
+    if (eligibleList.length === 0) {
+        return candidates;
+    }
+
+    // Alokasi maksimal 4 tab: prioritaskan 1 kandidat per marketplace yang datanya null (CR-006)
+    const eligibleIndices = [];
+    const seenMarkets = new Set();
+
+    // Round 1: Ambil 1 kandidat per marketplace unik
+    for (const item of eligibleList) {
+        if (!seenMarkets.has(item.market)) {
+            seenMarkets.add(item.market);
+            eligibleIndices.push(item.index);
+            if (eligibleIndices.length >= 4) break;
+        }
+    }
+
+    // Round 2: Jika belum mencapai 4, isi dengan sisa kandidat sesuai urutan
+    if (eligibleIndices.length < 4) {
+        for (const item of eligibleList) {
+            if (!eligibleIndices.includes(item.index)) {
+                eligibleIndices.push(item.index);
+                if (eligibleIndices.length >= 4) break;
             }
         }
     }
 
-    if (eligibleIndices.length === 0) {
-        return candidates;
-    }
-
-    console.log(`[ServiceWorker:DeepEnrichment] Memulai enrichment untuk ${eligibleIndices.length} kandidat secara sekuensial.`);
+    console.log(`[ServiceWorker:DeepEnrichment] Memulai enrichment untuk ${eligibleIndices.length} kandidat secara sekuensial (maks 4 tab).`);
 
     // Eksekusi SECARA SEKUENSIAL (for ... of, BUKAN paralel Promise.all)
     for (const idx of eligibleIndices) {

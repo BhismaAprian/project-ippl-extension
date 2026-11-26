@@ -381,6 +381,47 @@ function extractCard(card, manifest) {
         }
     }
 
+    // 8. Fallback: Ekstraksi gambar generik dari tag <img> di dalam kartu jika selector manifest tidak menemukan hasil (CR-005)
+    if (!imageUrl && card) {
+        let fallbackImgEls = [];
+        if (typeof card.querySelectorAll === 'function') {
+            try {
+                fallbackImgEls = Array.from(card.querySelectorAll('img'));
+            } catch (e) {
+                fallbackImgEls = [];
+            }
+        }
+        const fallbackAttrs = ['src', 'data-src', 'data-lazy-src', 'srcset', 'data-orig-src'];
+        const rejectPatterns = ['data:image', 'blank', 'placeholder', '1x1'].map(p => toRegExp(p)).filter(Boolean);
+
+        for (const imgEl of fallbackImgEls) {
+            for (const attr of fallbackAttrs) {
+                let val = imgEl.getAttribute ? imgEl.getAttribute(attr) : null;
+                if (!val || typeof val !== 'string') continue;
+                val = val.trim();
+                if (!val) continue;
+
+                if (attr === 'srcset' || val.includes(' ') || val.includes(',')) {
+                    const firstPart = val.split(',')[0].trim().split(/\s+/)[0].trim();
+                    if (firstPart) val = firstPart;
+                }
+
+                if (val.startsWith('//')) {
+                    val = 'https:' + val;
+                }
+
+                const isRejected = rejectPatterns.some(rx => rx.test(val));
+                if (isRejected) continue;
+
+                if (/^https?:\/\//i.test(val)) {
+                    imageUrl = val;
+                    break;
+                }
+            }
+            if (imageUrl) break;
+        }
+    }
+
     return {
         title: title,
         price: price,
