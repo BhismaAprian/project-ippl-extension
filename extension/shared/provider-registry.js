@@ -117,20 +117,40 @@ class ProviderRegistry {
             resultsByMarketplace[m] = [];
         }
 
-        // 1. Jalankan pencarian mandiri (prioritas 2 / 3) per marketplace
+        // 1. Jalankan pencarian mandiri:
+        //    - Shopee -> Native Extension (Priority 3)
+        //    - Tokopedia, Lazada, Blibli -> In-House Backend API (Priority 2) jika terdaftar, atau native mock
+        const backendProv = this.getProvider('in-house-backend-api');
+
         for (const m of targetMarketplaces) {
-            const nativeProv = this.getProvider(`${m}-native`) || this.getProvider(m);
-            if (nativeProv) {
+            if (m !== 'shopee' && backendProv) {
                 try {
-                    const isAvail = await Promise.resolve(nativeProv.isAvailable(options));
-                    if (isAvail) {
-                        const items = await nativeProv.search(queryOrFp, options);
+                    const backendAvail = await Promise.resolve(backendProv.isAvailable(options));
+                    if (backendAvail) {
+                        const items = await backendProv.search(queryOrFp, { ...options, marketplace: m });
                         if (Array.isArray(items)) {
                             resultsByMarketplace[m].push(...items);
                         }
                     }
                 } catch (err) {
-                    console.info(`[ProviderRegistry] Provider ${m} terkendala (${err.status || err.message}). Menyiapkan Scoped Fallback.`);
+                    console.info(`[ProviderRegistry] Backend API ${m} terkendala (${err.code || err.message}).`);
+                }
+            }
+
+            if (resultsByMarketplace[m].length === 0) {
+                const nativeProv = this.getProvider(`${m}-native`) || this.getProvider(m);
+                if (nativeProv) {
+                    try {
+                        const isAvail = await Promise.resolve(nativeProv.isAvailable(options));
+                        if (isAvail) {
+                            const items = await nativeProv.search(queryOrFp, options);
+                            if (Array.isArray(items)) {
+                                resultsByMarketplace[m].push(...items);
+                            }
+                        }
+                    } catch (err) {
+                        console.info(`[ProviderRegistry] Provider ${m} terkendala (${err.status || err.message}). Menyiapkan Scoped Fallback.`);
+                    }
                 }
             }
 

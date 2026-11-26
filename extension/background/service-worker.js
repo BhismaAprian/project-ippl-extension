@@ -500,13 +500,17 @@ async function enrichMissingData(candidates) {
 }
 
 // =========================================================================
-// In-House Resilient Scraping Engine Client (CR-003 / ADR-10)
-// Mengirim permintaan pencarian ke server backend mandiri (http://localhost:3000/api/search)
+// In-House Multi-Marketplace API Backend Client (CR-007 / ADR-14 / NFR-23)
+// Mengirim permintaan pencarian untuk Tokopedia, Lazada, Blibli ke http://localhost:3000/api/search
 // =========================================================================
+const BACKEND_OFFLINE_ERROR = 'Backend Engine belum berjalan. Jalankan npm start di folder backend.';
+
 async function searchWithBackendEngine(query, marketplace) {
     const backendUrl = 'http://localhost:3000/api/search';
     try {
-        if (typeof fetch === 'undefined') return null;
+        if (typeof fetch === 'undefined') {
+            return { status: 'BACKEND_OFFLINE', success: false, error: BACKEND_OFFLINE_ERROR, candidates: [] };
+        }
 
         const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
@@ -515,8 +519,8 @@ async function searchWithBackendEngine(query, marketplace) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                keyword: query,
-                marketplace: marketplace || 'shopee'
+                query: query,
+                marketplace: marketplace || 'all'
             }),
             signal: controller ? controller.signal : undefined
         });
@@ -525,21 +529,34 @@ async function searchWithBackendEngine(query, marketplace) {
 
         if (res.ok) {
             const data = await res.json();
-            if (data && data.success && Array.isArray(data.candidates) && data.candidates.length > 0) {
-                console.log(`[ServiceWorker] Backend Engine berhasil mengembalikan ${data.candidates.length} produk untuk ${marketplace}.`);
+            if (data && data.success && Array.isArray(data.candidates)) {
+                console.log(`[ServiceWorker] Backend Engine mengembalikan ${data.candidates.length} produk untuk ${marketplace}.`);
                 return {
                     status: 'OK',
                     success: true,
-                    marketplace: marketplace || 'shopee',
-                    source: 'in-house-engine',
+                    marketplace: marketplace || 'all',
+                    source: 'in-house-backend-api',
                     candidates: data.candidates
                 };
             }
         }
     } catch (err) {
-        console.info(`[ServiceWorker] In-House Backend Engine tidak aktif (${err.message}). Beralih ke fallback tab search.`);
+        console.info(`[ServiceWorker] Backend Engine tidak aktif (${err.message}).`);
+        return {
+            status: 'BACKEND_OFFLINE',
+            success: false,
+            marketplace: marketplace || 'all',
+            error: BACKEND_OFFLINE_ERROR,
+            candidates: []
+        };
     }
-    return null;
+    return {
+        status: 'ERROR',
+        success: false,
+        marketplace: marketplace || 'all',
+        error: BACKEND_OFFLINE_ERROR,
+        candidates: []
+    };
 }
 
 // =========================================================================
@@ -550,21 +567,17 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage?.addListener) {
         if (request.action === 'START_NATIVE_SEARCH') {
             const query = request.query;
             const manifest = request.manifest;
-            const marketplace = manifest?.id || 'shopee';
+            const marketplace = (manifest?.id || request.marketplace || 'shopee').toLowerCase();
 
             (async () => {
-                // 1. Coba In-House Resilient Scraping Engine terlebih dahulu
-                try {
+                // Khusus non-Shopee (Tokopedia, Lazada, Blibli): WAJIB melalui Backend API tanpa membuka tab browser (CR-007 / ADR-14)
+                if (marketplace !== 'shopee') {
                     const backendResult = await searchWithBackendEngine(query, marketplace);
-                    if (backendResult && Array.isArray(backendResult.candidates) && backendResult.candidates.length > 0) {
-                        sendResponse(backendResult);
-                        return;
-                    }
-                } catch (e) {
-                    console.warn('[ServiceWorker] Backend search attempt threw error, proceeding to tab search:', e.message);
+                    sendResponse(backendResult);
+                    return;
                 }
 
-                // 2. Fallback ke Tab-Based Native Search jika backend offline / kosong
+                // Khusus Shopee: tetap gunakan Native Extension Phase 3 (Brief Active Window)
                 try {
                     const result = await openAndExtractSearchTab(query, manifest);
                     if (result.status === 'OK') {
