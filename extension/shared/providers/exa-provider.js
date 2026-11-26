@@ -83,11 +83,12 @@ class ExaProvider extends BaseProviderClass {
     }
 
     /**
-     * Helper: Ekstraksi nominal harga IDR dari cuplikan teks snippet & highlights
+     * Helper: Ekstraksi nominal harga IDR dari cuplikan teks snippet & highlights (CR-006: Multi-Pattern Price Parser)
      * @param {string} text 
+     * @param {number} [referencePrice=0]
      * @returns {number|null}
      */
-    extractPrice(text) {
+    extractPrice(text, referencePrice = 0) {
         if (!text || typeof text !== 'string') return null;
 
         const parsePriceFn = _normalizer?.parseCandidatePrice || ((val) => {
@@ -96,27 +97,74 @@ class ExaProvider extends BaseProviderClass {
             return !isNaN(num) && num >= 1000 ? num : null;
         });
 
-        // 1. Tangkap pola nominal Rupiah terstruktur: Rp 1.500.000 / Rp. 150.000
-        const structuredMatch = text.match(/(?:Rp\.?\s*)(\d{1,3}(?:[.,]\d{3})+)/i);
-        if (structuredMatch && structuredMatch[1]) {
-            const parsed = parsePriceFn(structuredMatch[1]);
-            if (parsed && parsed >= 1000) {
-                return parsed;
-            }
-        }
+        const foundPrices = [];
 
-        // 2. Tangkap pola nominal Rupiah umum (Rp / IDR)
-        const matches = text.matchAll(/(?:Rp|IDR)\.?\s*([\d\.,]+)/gi);
-        for (const m of matches) {
+        // 1. Pola Mata Uang Rupiah (mendukung NBSP \u00a0 dan spasi biasa)
+        const rupiahMatches = text.matchAll(/(?:Rp\.?|IDR)[\s\u00a0]*(\d{1,3}(?:[.,]\d{3})+)/gi);
+        for (const m of rupiahMatches) {
             if (m && m[1]) {
-                const parsed = parsePriceFn(m[1]);
-                if (parsed && parsed >= 1000) {
-                    return parsed;
+                const p = parsePriceFn(m[1]);
+                if (p && p >= 100) {
+                    const matchIdx = m.index;
+                    const contextAfter = text.slice(matchIdx, matchIdx + 40).toLowerCase();
+                    const contextBefore = text.slice(Math.max(0, matchIdx - 30), matchIdx).toLowerCase();
+                    const isInstallment = /(?:\/|\bper\s+|\btiap\s+)(?:bln|bulan|month)\b/i.test(contextAfter)
+                        || /\bcicilan\b/i.test(contextBefore);
+
+                    foundPrices.push({
+                        price: p,
+                        isInstallment,
+                        source: 'rupiah'
+                    });
                 }
             }
         }
 
-        return null;
+        // 2. Pola JSON-LD / Metadata tersembunyi di teks Exa: /"price"\s*:\s*"?(\d{4,9})"?/i
+        const jsonLdMatches = text.matchAll(/"(?:price|lowPrice)"\s*:\s*"?(\d{4,9})"?/gi);
+        for (const m of jsonLdMatches) {
+            if (m && m[1]) {
+                const p = parseInt(m[1], 10);
+                if (!isNaN(p) && p >= 100) {
+                    foundPrices.push({
+                        price: p,
+                        isInstallment: false,
+                        source: 'json-ld'
+                    });
+                }
+            }
+        }
+
+        // 3. Pola Rupiah angka langsung tanpa pemisah ribuan
+        const rawRupiahMatches = text.matchAll(/(?:Rp\.?|IDR)[\s\u00a0]*(\d{4,9})/gi);
+        for (const m of rawRupiahMatches) {
+            if (m && m[1]) {
+                const p = parseInt(m[1], 10);
+                if (!isNaN(p) && p >= 100) {
+                    foundPrices.push({
+                        price: p,
+                        isInstallment: false,
+                        source: 'rupiah-raw'
+                    });
+                }
+            }
+        }
+
+        if (foundPrices.length === 0) return null;
+
+        // Prioritaskan harga non-cicilan
+        const nonInstallmentPrices = foundPrices.filter(fp => !fp.isInstallment);
+        const candidates = nonInstallmentPrices.length > 0 ? nonInstallmentPrices : foundPrices;
+
+        // Jika referencePrice tersedia, prioritaskan harga yang masuk akal (>= 30% referencePrice)
+        if (referencePrice && referencePrice > 0) {
+            const plausible = candidates.filter(c => c.price >= referencePrice * 0.30);
+            if (plausible.length > 0) {
+                return plausible[0].price;
+            }
+        }
+
+        return candidates[0].price;
     }
 
     /**
@@ -159,8 +207,8 @@ class ExaProvider extends BaseProviderClass {
             }
         }
 
-        // Sanitasi query: hilangkan karakter simbol liar
-        query = query.replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+        // Sanitasi query: hilangkan karakter simbol liar dan operator boolean minus (-kata)
+        query = query.replace(/(?:^|\s)-\w+/g, ' ').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
 
         // PEMERIKSAAN KERAS: Jangan pernah memanggil fetch jika query kosong/terlalu pendek
         if (!query || query.length < 2) {
@@ -179,18 +227,15 @@ class ExaProvider extends BaseProviderClass {
             throw new Error('Fetch function tidak tersedia pada runtime ini.');
         }
 
-        // 3. Eksekusi Request ke Exa Search API
-        const numResults = options.numResults || 20;
-        const includeDomains = options.includeDomains || [
-            'shopee.co.id',
-            'tokopedia.com',
-            'lazada.co.id',
-            'blibli.com'
-        ];
+        // 3. Eksekusi Request ke Exa Search API (Partisi Per Marketplace - CR-006)
+        const domainsToSearch = (Array.isArray(options.includeDomains) && options.includeDomains.length === 1)
+            ? options.includeDomains
+            : ['shopee.co.id', 'tokopedia.com', 'lazada.co.id', 'blibli.com'];
 
-        let response;
-        try {
-            response = await activeFetch('https://api.exa.ai/search', {
+        const numResultsPerDomain = options.numResultsPerDomain || (domainsToSearch.length === 1 ? (options.numResults || 20) : 5);
+
+        const fetchSingleDomain = async (domain) => {
+            const response = await activeFetch('https://api.exa.ai/search', {
                 method: 'POST',
                 headers: {
                     'x-api-key': effectiveKey.trim(),
@@ -198,38 +243,70 @@ class ExaProvider extends BaseProviderClass {
                 },
                 body: JSON.stringify({
                     query: query,
-                    numResults: numResults,
+                    numResults: numResultsPerDomain,
                     type: 'auto',
-                    includeDomains: includeDomains,
+                    includeDomains: [domain],
                     contents: {
-                        text: { maxCharacters: 800 },
-                        highlights: { numSentences: 2 }
+                        text: { maxCharacters: 1200 },
+                        highlights: { numSentences: 3 }
                     },
                     extras: { imageLinks: 1 }
                 })
             });
-        } catch (netErr) {
-            throw new Error(`Gagal terhubung ke layanan Exa: ${netErr.message || 'Network error'}`);
-        }
 
-        if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
-                throw new Error('API Key Exa tidak valid. Periksa kembali di menu Settings.');
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error('API Key Exa tidak valid. Periksa kembali di menu Settings.');
+                }
+                if (response.status === 429) {
+                    throw new Error('Batas kuota Exa API tercapai (Rate Limit 429). Coba lagi nanti.');
+                }
+                throw new Error(`Exa API Error (${domain}): HTTP ${response.status} ${response.statusText}`);
             }
-            if (response.status === 429) {
-                throw new Error('Batas kuota Exa API tercapai (Rate Limit 429). Coba lagi nanti.');
+
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonErr) {
+                throw new Error('Format respon Exa API bukan JSON yang valid.');
             }
-            throw new Error(`Exa API Error: HTTP ${response.status} ${response.statusText}`);
+
+            return (data && Array.isArray(data.results)) ? data.results : [];
+        };
+
+        const rawResults = [];
+        const seenUrls = new Set();
+
+        if (domainsToSearch.length === 1) {
+            const singleResults = await fetchSingleDomain(domainsToSearch[0]);
+            for (const item of singleResults) {
+                if (item && item.url && !seenUrls.has(item.url)) {
+                    seenUrls.add(item.url);
+                    rawResults.push(item);
+                }
+            }
+        } else {
+            const domainPromises = domainsToSearch.map(d => fetchSingleDomain(d));
+            const settled = await Promise.allSettled(domainPromises);
+            const allRejected = settled.every(s => s.status === 'rejected');
+            if (allRejected && settled.length > 0) {
+                throw settled[0].reason;
+            }
+
+            for (const s of settled) {
+                if (s.status === 'fulfilled' && Array.isArray(s.value)) {
+                    for (const item of s.value) {
+                        if (item && item.url && !seenUrls.has(item.url)) {
+                            seenUrls.add(item.url);
+                            rawResults.push(item);
+                        }
+                    }
+                } else if (s.status === 'rejected') {
+                    console.warn('[ExaProvider] Partisi domain gagal:', s.reason?.message);
+                }
+            }
         }
 
-        let data;
-        try {
-            data = await response.json();
-        } catch (jsonErr) {
-            throw new Error('Format respon Exa API bukan JSON yang valid.');
-        }
-
-        const rawResults = (data && Array.isArray(data.results)) ? data.results : [];
         if (rawResults.length === 0) {
             return [];
         }
@@ -237,6 +314,8 @@ class ExaProvider extends BaseProviderClass {
         // 4. Filter Kualitas Lapis 1: PDP URL Classifier (Membuang link etalase/non-produk)
         const classifyUrlFn = _pdpClassifier?.classifyUrl || ((u) => ({ isPdp: true, marketplace: 'unknown' }));
         const isProductUrlFn = _pdpClassifier?.isProductUrl || ((u) => true);
+        const rawProduct = options.rawProduct || (typeof queryOrFingerprint === 'object' ? queryOrFingerprint : null);
+        const origPrice = rawProduct?.price || 0;
 
         const pdpCandidates = [];
         for (const item of rawResults) {
@@ -260,7 +339,7 @@ class ExaProvider extends BaseProviderClass {
                 price = parsePriceFn(item.price);
             }
             if (!price) {
-                price = this.extractPrice(combinedText);
+                price = this.extractPrice(combinedText, origPrice);
             }
 
             // Ekstraksi Gambar dari metadata hasil Exa (ADR-11 / CR-004B)
@@ -283,6 +362,15 @@ class ExaProvider extends BaseProviderClass {
                 }
             }
 
+            // Ekstraksi fallback dari cuplikan teks/highlights jika mengandung tag <img> atau meta tag og:image (CR-005)
+            if (!imageUrl && combinedText) {
+                const imgTagMatch = combinedText.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i)
+                    || combinedText.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https?:\/\/[^"']+)["']/i);
+                if (imgTagMatch && imgTagMatch[1]) {
+                    imageUrl = imgTagMatch[1].trim();
+                }
+            }
+
             pdpCandidates.push({
                 title: item.title || 'Tanpa Judul',
                 url: item.url,
@@ -296,12 +384,40 @@ class ExaProvider extends BaseProviderClass {
 
         // 5. Filter Kualitas Lapis 2: Gatekeeper 3 Lapis
         const isCatMatchFn = _gatekeeper?.isCategoryMatch || (() => true);
-        const rawProduct = options.rawProduct || (typeof queryOrFingerprint === 'object' ? queryOrFingerprint : null);
         const aiData = options.aiData || null;
 
         const verifiedCandidates = pdpCandidates.filter(c => {
             return isCatMatchFn(c.title, aiData, rawProduct, c.price);
         });
+
+        // Simpan Telemetry Audit untuk konsol & diagnosis (CR-006)
+        const countByMarketplace = (items, getMarket) => {
+            const counts = { shopee: 0, tokopedia: 0, lazada: 0, blibli: 0 };
+            for (const it of items) {
+                const m = (getMarket(it) || '').toLowerCase();
+                for (const k of Object.keys(counts)) {
+                    if (m.includes(k)) counts[k]++;
+                }
+            }
+            return counts;
+        };
+
+        const classifyForAudit = (u) => {
+            const low = (u || '').toLowerCase();
+            if (low.includes('shopee')) return 'shopee';
+            if (low.includes('tokopedia')) return 'tokopedia';
+            if (low.includes('lazada')) return 'lazada';
+            if (low.includes('blibli')) return 'blibli';
+            return 'other';
+        };
+
+        this.lastSearchAudit = {
+            query: query,
+            tierQueries: [query],
+            rawPerMarketplace: countByMarketplace(rawResults, it => classifyForAudit(it.url)),
+            pdpFilterPassed: countByMarketplace(pdpCandidates, it => it.marketplace || classifyForAudit(it.url)),
+            gatekeeperPassed: countByMarketplace(verifiedCandidates, it => it.marketplace || classifyForAudit(it.url))
+        };
 
         return verifiedCandidates;
     }

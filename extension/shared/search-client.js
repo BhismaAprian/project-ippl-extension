@@ -1,4 +1,7 @@
 const _gatekeeperModule = typeof require !== 'undefined' ? require('./gatekeeper.js') : null;
+const _pdpClassifierModule = typeof require !== 'undefined'
+    ? require('./pdp-url-classifier.js')
+    : (typeof window !== 'undefined' ? window.PdpUrlClassifier : null);
 
 class SearchClient {
     /**
@@ -44,38 +47,86 @@ class SearchClient {
     }
 
     /**
-     * Helper: Ekstrak harga dari teks snippet secara akurat
+     * Helper: Ekstrak harga dari teks snippet secara akurat (CR-006: Multi-Pattern Price Parser)
      */
-    extractPrice(text) {
-        if (!text) return null;
+    extractPrice(text, referencePrice = 0) {
+        if (!text || typeof text !== 'string') return null;
 
-        // 1. Tangkap pola nominal Rupiah terstruktur: Rp 1.500.000 / Rp. 150.000
-        const structuredMatch = text.match(/(?:Rp\.?\s*)(\d{1,3}(?:[.,]\d{3})+)/i);
-        if (structuredMatch && structuredMatch[1]) {
-            const cleanNumber = structuredMatch[1].replace(/[.,]/g, '');
-            const num = parseInt(cleanNumber, 10);
-            if (!isNaN(num) && num >= 1000) {
-                return num;
-            }
-        }
+        const parsePriceFn = (typeof window !== 'undefined' && window.CandidateNormalizer?.parseCandidatePrice)
+            || ((val) => {
+                const digits = String(val).replace(/[^\d]/g, '');
+                const num = parseInt(digits, 10);
+                return !isNaN(num) && num >= 1000 ? num : null;
+            });
 
-        // 2. Tangkap pola nominal Rupiah umum
-        const matches = text.matchAll(/(?:Rp|IDR)\.?\s*([\d\.,]+)/gi);
-        const validPrices = [];
+        const foundPrices = [];
 
-        for (const match of matches) {
-            if (match && match[1]) {
-                const cleanNumber = match[1].replace(/[.,]/g, '');
-                const num = parseInt(cleanNumber, 10);
-                // Hanya terima harga masuk akal (> 1.000 IDR) untuk menyaring potongan diskon kecil/token palsu
-                if (!isNaN(num) && num >= 1000) {
-                    validPrices.push(num);
+        // 1. Tangkap pola nominal Rupiah terstruktur (mendukung NBSP \u00a0 dan spasi)
+        const rupiahMatches = text.matchAll(/(?:Rp\.?|IDR)[\s\u00a0]*(\d{1,3}(?:[.,]\d{3})+)/gi);
+        for (const m of rupiahMatches) {
+            if (m && m[1]) {
+                const p = parsePriceFn(m[1]);
+                if (p && p >= 100) {
+                    const matchIdx = m.index;
+                    const contextAfter = text.slice(matchIdx, matchIdx + 40).toLowerCase();
+                    const contextBefore = text.slice(Math.max(0, matchIdx - 30), matchIdx).toLowerCase();
+                    const isInstallment = /(?:\/|\bper\s+|\btiap\s+)(?:bln|bulan|month)\b/i.test(contextAfter)
+                        || /\bcicilan\b/i.test(contextBefore);
+
+                    foundPrices.push({
+                        price: p,
+                        isInstallment,
+                        source: 'rupiah'
+                    });
                 }
             }
         }
 
-        if (validPrices.length === 0) return null;
-        return validPrices[0];
+        // 2. Tangkap pola JSON-LD / metadata tersembunyi di teks Exa: /"price"\s*:\s*"?(\d{4,9})"?/i
+        const jsonLdMatches = text.matchAll(/"(?:price|lowPrice)"\s*:\s*"?(\d{4,9})"?/gi);
+        for (const m of jsonLdMatches) {
+            if (m && m[1]) {
+                const p = parseInt(m[1], 10);
+                if (!isNaN(p) && p >= 100) {
+                    foundPrices.push({
+                        price: p,
+                        isInstallment: false,
+                        source: 'json-ld'
+                    });
+                }
+            }
+        }
+
+        // 3. Tangkap pola nominal Rupiah umum / raw digits
+        const rawMatches = text.matchAll(/(?:Rp\.?|IDR)[\s\u00a0]*(\d{4,9})/gi);
+        for (const m of rawMatches) {
+            if (m && m[1]) {
+                const p = parseInt(m[1], 10);
+                if (!isNaN(p) && p >= 100) {
+                    foundPrices.push({
+                        price: p,
+                        isInstallment: false,
+                        source: 'rupiah-raw'
+                    });
+                }
+            }
+        }
+
+        if (foundPrices.length === 0) return null;
+
+        // Prioritaskan harga non-cicilan
+        const nonInstallmentPrices = foundPrices.filter(fp => !fp.isInstallment);
+        const candidates = nonInstallmentPrices.length > 0 ? nonInstallmentPrices : foundPrices;
+
+        // Jika referencePrice tersedia, prioritaskan harga yang masuk akal (>= 30% referencePrice)
+        if (referencePrice && referencePrice > 0) {
+            const plausible = candidates.filter(c => c.price >= referencePrice * 0.30);
+            if (plausible.length > 0) {
+                return plausible[0].price;
+            }
+        }
+
+        return candidates[0].price;
     }
 
     /**
@@ -188,10 +239,16 @@ class SearchClient {
 
         console.log("[EXA] Mengirim Query:", query);
 
-        // 2. Fetch ke Exa API dengan error handling komprehensif
-        let response;
-        try {
-            response = await fetch('https://api.exa.ai/search', {
+        // 2. Fetch ke Exa API dengan Partisi Per Marketplace (CR-006: 4 Panggilan Paralel Terpisah)
+        const targetDomains = [
+            'shopee.co.id',
+            'tokopedia.com',
+            'lazada.co.id',
+            'blibli.com'
+        ];
+
+        const fetchDomain = async (domain) => {
+            const res = await fetch('https://api.exa.ai/search', {
                 method: 'POST',
                 headers: {
                     'x-api-key': exaKey,
@@ -199,53 +256,72 @@ class SearchClient {
                 },
                 body: JSON.stringify({
                     query: query,
-                    numResults: 30,
-                    type: "auto",
-                    includeDomains: ["shopee.co.id", "tokopedia.com", "lazada.co.id", "blibli.com"],
+                    type: 'auto',
+                    numResults: 5,
+                    includeDomains: [domain],
                     contents: {
-                        text: { maxCharacters: 800 },
-                        highlights: { numSentences: 2 }
+                        text: { maxCharacters: 1200 },
+                        highlights: { numSentences: 3 }
                     },
                     extras: { imageLinks: 1 }
                 })
             });
+
+            if (!res.ok) {
+                if (res.status === 401 || res.status === 403) {
+                    throw new Error("API Key Exa tidak valid. Periksa kembali di menu Settings.");
+                }
+                if (res.status === 429) {
+                    throw new Error("Batas kuota Exa API tercapai (Rate Limit). Coba lagi nanti.");
+                }
+                throw new Error(`Exa API Error (${domain}): HTTP ${res.status}`);
+            }
+
+            return res.json();
+        };
+
+        let domainSettledResults;
+        try {
+            domainSettledResults = await Promise.allSettled(targetDomains.map(d => fetchDomain(d)));
         } catch (fetchError) {
             if (typeof navigator !== 'undefined' && !navigator.onLine) {
                 throw new Error("Koneksi internet terputus. Pastikan WiFi atau paket data Anda aktif.");
             }
-            if (fetchError && (fetchError.message?.includes('Failed to fetch') || fetchError.name === 'TypeError')) {
-                throw new Error("Gagal terhubung ke layanan Exa. Periksa koneksi internet Anda.");
-            }
             throw fetchError;
         }
 
-        if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
-                throw new Error("API Key Exa tidak valid. Periksa kembali di menu Settings.");
+        const rawResults = [];
+        const seenUrls = new Set();
+
+        for (const s of domainSettledResults) {
+            if (s.status === 'fulfilled' && s.value && Array.isArray(s.value.results)) {
+                for (const item of s.value.results) {
+                    if (item && item.url && !seenUrls.has(item.url)) {
+                        seenUrls.add(item.url);
+                        rawResults.push(item);
+                    }
+                }
+            } else if (s.status === 'rejected') {
+                console.warn('[SearchClient] Partisi domain Exa gagal:', s.reason?.message);
             }
-            if (response.status === 429) {
-                throw new Error("Batas kuota Exa API tercapai (Rate Limit). Coba lagi nanti.");
-            }
-            throw new Error(`Exa API Error: HTTP ${response.status} ${response.statusText}`);
         }
 
-        const data = await response.json();
-        console.log("[EXA] Raw results:", (data.results && data.results.length) || 0);
+        console.log("[EXA] Raw results terpartisi:", rawResults.length);
 
-        if (!data.results || !Array.isArray(data.results)) {
-            console.warn("[EXA] Format response tidak valid atau kosong.");
+        if (rawResults.length === 0) {
             return [];
         }
 
         // 3. Parsing Hasil & Deduplikasi URL Kanonikal (ADR-12 / T4.14)
-        const seenUrls = new Set();
+        const seenCanonUrls = new Set();
         const rawCandidates = [];
+        const origPrice = rawProduct?.price || 0;
 
-        for (const item of data.results) {
+        for (const item of rawResults) {
             if (!item || !item.url) continue;
             const canonUrl = canonicalizeUrl(item.url);
-            if (seenUrls.has(canonUrl)) continue;
-            seenUrls.add(canonUrl);
+            if (seenCanonUrls.has(canonUrl)) continue;
+            seenCanonUrls.add(canonUrl);
 
             const marketplace = this.getMarketplace(item.url);
             const snippet = item.text || item.snippet || "";
@@ -262,7 +338,7 @@ class SearchClient {
                 price = parsePriceFn(item.price);
             }
             if (!price) {
-                price = this.extractPrice(combinedText);
+                price = this.extractPrice(combinedText, origPrice);
             }
 
             const candidateImg = item.image
@@ -270,6 +346,8 @@ class SearchClient {
                 || item.extras?.image
                 || item.extras?.ogImage
                 || item.ogImage
+                || (item.extras?.openGraph && item.extras.openGraph['og:image'])
+                || (item.openGraph && item.openGraph.image)
                 || null;
             let imageUrl = null;
             if (typeof candidateImg === 'string') {
@@ -281,6 +359,19 @@ class SearchClient {
                 }
             }
 
+            // Fallback gambar dari cuplikan teks jika ada tag <img>
+            if (!imageUrl && combinedText) {
+                const imgTagMatch = combinedText.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i)
+                    || combinedText.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https?:\/\/[^"']+)["']/i);
+                if (imgTagMatch && imgTagMatch[1]) {
+                    imageUrl = imgTagMatch[1].trim();
+                }
+            }
+
+            const isDirect = _pdpClassifierModule && typeof _pdpClassifierModule.isProductUrl === 'function'
+                ? _pdpClassifierModule.isProductUrl(item.url)
+                : this.isDirectProduct(item.url, marketplace);
+
             rawCandidates.push({
                 title: item.title || "Tanpa Judul",
                 url: item.url,
@@ -288,7 +379,7 @@ class SearchClient {
                 snippet: snippet.length > 200 ? snippet.substring(0, 200) + "..." : snippet,
                 marketplace: marketplace,
                 imageUrl: imageUrl,
-                isDirectProduct: this.isDirectProduct(item.url, marketplace),
+                isDirectProduct: isDirect,
                 price: price
             });
         }

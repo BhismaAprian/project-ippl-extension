@@ -31,8 +31,17 @@ function parseCandidatePrice(priceInput) {
         return null;
     }
 
-    let clean = priceInput.trim().toLowerCase();
+    let clean = priceInput.trim().toLowerCase().replace(/\u00a0/g, ' ');
     if (!clean) return null;
+
+    // Kasus 1.5: Format JSON-LD / metadata embed (misal: "{"price": "1850000"}" atau "price: 2799000")
+    const jsonLdMatch = clean.match(/"(?:price|lowprice)"\s*:\s*"?(\d{4,12})"?/i);
+    if (jsonLdMatch && jsonLdMatch[1]) {
+        const jsonVal = parseInt(jsonLdMatch[1], 10);
+        if (!isNaN(jsonVal) && jsonVal >= 100) {
+            return jsonVal > 100000000 ? Math.round(jsonVal / 100000) : jsonVal;
+        }
+    }
 
     // Kasus 2: Format singkatan "jt" atau "juta" (misal: "1.5 jt", "2,5 juta", "Rp 1.5jt")
     const jtMatch = clean.match(/(?:rp|idr)?\s*(\d+(?:[.,]\d+)?)\s*(?:jt|juta)\b/i);
@@ -102,15 +111,32 @@ function parseCandidateRating(ratingInput) {
 }
 
 /**
+ * @typedef {Object} NormalizedCandidate
+ * @property {string} source - Marketplace sumber ('shopee' | 'tokopedia' | 'lazada' | 'blibli' | 'exa')
+ * @property {string} provenance - Asal pencarian ('native-assisted' | 'exa-fallback' | 'official-api' | 'indonesia-scraper-api')
+ * @property {string} url - Tautan produk kanonikal
+ * @property {string} title - Judul produk
+ * @property {number} price - Harga produk dalam IDR integer
+ * @property {number|null} rating - Rating produk (0 - 5) atau null
+ * @property {string|null} shopName - Nama toko atau seller
+ * @property {string|null} itemId - ID item produk jika tersedia
+ * @property {string|null} imageUrl - URL gambar produk tervalidasi (http:// atau https://) atau null jika tidak ada
+ * @property {string} observedAt - Waktu observasi ISO 8601 string
+ * @property {number} matchScore - Skor kemiripan (0 - 100)
+ * @property {string} matchType - Tipe kecocokan ('EXACT' | 'EQUIVALENT' | 'UPGRADE' | 'DOWNGRADE' | 'UNKNOWN')
+ * @property {object} raw - Objek data mentah asli
+ */
+
+/**
  * Normalisasi objek kandidat ke dalam Unified Candidate Schema.
  * Menjamin integritas field wajib. Jika price gagal di-parse, return null (kandidat dibuang).
  * 
  * @param {object} raw - Data mentah produk dari scraper/search result
- * @param {string} source - Marketplace sumber ('shopee' | 'tokopedia' | 'lazada' | 'blibli')
+ * @param {string} source - Marketplace sumber ('shopee' | 'tokopedia' | 'lazada' | 'blibli' | 'exa')
  * @param {string} provenance - Asal pencarian ('native-assisted' | 'exa-fallback' | 'official-api' | 'indonesia-scraper-api')
- * @returns {object|null} NormalizedCandidate atau null jika data tidak valid
+ * @returns {NormalizedCandidate|null} NormalizedCandidate atau null jika data tidak valid
  */
-function normalizeCandidate(raw, source, provenance) {
+function normalizeCandidate(raw, source, provenance, options = {}) {
     if (!raw || typeof raw !== 'object') {
         return null;
     }
@@ -133,11 +159,14 @@ function normalizeCandidate(raw, source, provenance) {
         return null;
     }
 
-    // Parsing dan validasi harga (wajib valid, jika gagal kandidat dibuang)
-    const price = parseCandidatePrice(raw.price);
-    if (price === null) {
+    // Parsing dan validasi harga (Aturan null vs 0 - CR-006):
+    // Jika harga tidak ditemukan atau < 100, set price: null (dilarang keras menyetel 0).
+    const parsedPrice = parseCandidatePrice(raw.price);
+    const allowNull = Boolean(options?.allowNullPrice || provenance === 'exa-fallback' || raw.allowNullPrice);
+    if (parsedPrice === null && !allowNull) {
         return null;
     }
+    const price = (parsedPrice !== null && parsedPrice >= 100) ? parsedPrice : null;
 
     const rating = parseCandidateRating(raw.rating);
     const shopName = (typeof raw.shopName === 'string' && raw.shopName.trim())

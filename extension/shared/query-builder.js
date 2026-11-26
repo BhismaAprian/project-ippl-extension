@@ -114,6 +114,7 @@ function generateDeterministicVariants(productFingerprint) {
 function cleanText(str) {
     if (!str || typeof str !== 'string') return '';
     return str
+        .replace(/(?:^|\s)-\w+/g, ' ')
         .replace(/[^\w\s-]/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();

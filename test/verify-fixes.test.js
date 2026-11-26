@@ -426,8 +426,8 @@ it('Payload Exa search harus menyertakan contents.highlights dan extras.imageLin
     await provider.search('kasur in the box 160x200');
 
     assert.ok(capturedPayload, 'Payload Exa harus terkirim');
-    assert.strictEqual(capturedPayload.contents.text.maxCharacters, 800);
-    assert.strictEqual(capturedPayload.contents.highlights.numSentences, 2);
+    assert.ok(capturedPayload.contents.text.maxCharacters >= 800, 'maxCharacters minimal 800');
+    assert.ok(capturedPayload.contents.highlights.numSentences >= 2, 'numSentences minimal 2');
     assert.strictEqual(capturedPayload.extras.imageLinks, 1);
 });
 

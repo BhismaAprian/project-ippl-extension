@@ -53,6 +53,7 @@ it('Data lengkap harus menghasilkan objek NormalizedCandidate dengan semua field
     assert.strictEqual(res.rating, 4.9);
     assert.strictEqual(res.shopName, 'Enterkomputer Official');
     assert.strictEqual(res.itemId, '456');
+    assert.strictEqual(res.imageUrl, null, 'imageUrl default harus null jika tidak ada pada raw');
     assert.strictEqual(res.matchType, 'UNKNOWN');
     assert.strictEqual(res.raw, raw);
 });
@@ -154,6 +155,31 @@ it('normalizeCandidate harus memvalidasi imageUrl diawali http:// atau https://,
 
     const relativePath = normalizeCandidate({ title: 'E', price: 100000, url: 'https://tokopedia.com/e', imageUrl: '/assets/thumb.jpg' }, 'tokopedia', 'native-assisted');
     assert.strictEqual(relativePath.imageUrl, null);
+});
+
+// 10. Validasi Field imageUrl pada Skema NormalizedCandidate (CR-005)
+it('NormalizedCandidate harus memuat field imageUrl (string | null) pada skema', () => {
+    const rawWithImg = {
+        title: 'Kasur Springbed Comforta 160x200',
+        price: 'Rp 3.500.000',
+        url: 'https://shopee.co.id/product-i.99.88',
+        imageUrl: 'https://cf.shopee.co.id/file/id-123456789.jpg'
+    };
+    const resWithImg = normalizeCandidate(rawWithImg, 'shopee', 'native-assisted');
+    assert.ok(resWithImg !== null);
+    assert.strictEqual(typeof resWithImg.imageUrl, 'string');
+    assert.strictEqual(resWithImg.imageUrl, 'https://cf.shopee.co.id/file/id-123456789.jpg');
+    assert.ok('imageUrl' in resWithImg, 'Property imageUrl wajib ada pada objek NormalizedCandidate');
+
+    const rawWithoutImg = {
+        title: 'Kasur Springbed Comforta 160x200',
+        price: 'Rp 3.500.000',
+        url: 'https://shopee.co.id/product-i.99.88'
+    };
+    const resWithoutImg = normalizeCandidate(rawWithoutImg, 'shopee', 'native-assisted');
+    assert.ok(resWithoutImg !== null);
+    assert.strictEqual(resWithoutImg.imageUrl, null);
+    assert.ok('imageUrl' in resWithoutImg, 'Property imageUrl wajib ada pada objek NormalizedCandidate (nilai null)');
 });
 
 console.log(`\n========================================`);

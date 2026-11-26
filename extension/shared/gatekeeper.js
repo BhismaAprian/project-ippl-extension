@@ -82,6 +82,27 @@ function isCategoryMatch(candidateTitle, aiData = null, rawProduct = null, candi
     const candTitle = candidateTitle.toLowerCase();
     const origPrice = rawProduct?.price || 0;
     const isMattress = origTitle.includes('springbed') || origTitle.includes('spring bed') || origTitle.includes('kasur') || origTitle.includes('matras');
+    const category = (aiData?.category || '').trim().toLowerCase();
+    const isKasurCategory = category === 'kasur' || category.includes('kasur') || isMattress;
+
+    // =========================================================================
+    // LAYER 0A: Strict Kasur Category Accessory Guard (CR-005)
+    // Jika aiData.category adalah "Kasur" (atau produk acuan kasur/springbed),
+    // tolak mutlak kandidat yang memuat "Sprei", "Bantal", "Guling", "Bed Cover"
+    // kecuali terdapat kata penanda "Bonus/Gratis".
+    // =========================================================================
+    if (isKasurCategory) {
+        const KASUR_ACCESSORY_REGEX = /\b(sprei|seprei|seprai|bantal|guling|bed\s*cover|bedcover)\b/i;
+        if (KASUR_ACCESSORY_REGEX.test(candTitle)) {
+            const origHasAccessory = KASUR_ACCESSORY_REGEX.test(origTitle);
+            if (!origHasAccessory) {
+                const hasBonus = /\b(bonus|gratis|free|\+|plus|include|termasuk|dapat|hadiah)\b/i.test(candTitle);
+                if (!hasBonus) {
+                    return false;
+                }
+            }
+        }
+    }
 
     // =========================================================================
     // LAYER 0: Promo Stripping & Head-Noun Lock (ADR-13)

@@ -63,17 +63,24 @@ function classifyUrl(url) {
     // 1. Filter Sampah Global (Pencarian, Etalase, Keranjang, Tag, Katalog)
     const hasSearchQuery = parsed.searchParams.has('q')
         || parsed.searchParams.has('keyword')
-        || parsed.searchParams.has('searchterm')
-        || parsed.searchParams.has('key');
+        || parsed.searchParams.has('searchterm');
 
     if (hasSearchQuery) {
         return { isPdp: false, marketplace, reason: 'URL mengandung parameter pencarian (?q=/?keyword=)' };
     }
 
-    const junkPathSegments = ['/find/', '/find', '/search/', '/search', '/etalase/', '/etalase', '/cart/', '/cart', '/catalog/', '/catalog', '/tag/', '/tag'];
-    for (const junk of junkPathSegments) {
-        if (pathname === junk || pathname.startsWith(junk + '/') || pathname.includes(junk)) {
-            return { isPdp: false, marketplace, reason: `URL mengarah ke halaman non-PDP (${junk})` };
+    const pathSegments = pathname.split('/').filter(Boolean);
+    const junkSegments = new Set(['find', 'search', 'etalase', 'cart', 'catalog', 'tag', 'jual', 'promosi']);
+
+    // Periksa apakah URL merupakan halaman kategori/pencarian sampah
+    if (pathSegments.some(seg => junkSegments.has(seg))) {
+        const isLegitPdp = (marketplace === 'tokopedia' && pathSegments.length >= 2 && !junkSegments.has(pathSegments[0]) && pathSegments[1] !== 'etalase')
+            || (marketplace === 'lazada' && pathSegments[0] === 'products')
+            || (marketplace === 'blibli' && pathSegments[0] === 'p')
+            || (marketplace === 'shopee' && (/-i\.\d+\.\d+/i.test(pathname) || /\/product\/\d+\/\d+/i.test(pathname)));
+
+        if (!isLegitPdp) {
+            return { isPdp: false, marketplace, reason: 'URL mengarah ke halaman non-PDP / pencarian / kategori' };
         }
     }
 
@@ -83,7 +90,7 @@ function classifyUrl(url) {
             // Shopee PDP resmi wajib mengandung pola -i.{shopId}.{itemId} atau /product/{shopId}/{itemId}
             const hasShopeePdpPattern = /-i\.\d+\.\d+/i.test(pathname) || /\/product\/\d+\/\d+/i.test(pathname);
             if (!hasShopeePdpPattern) {
-                return { isPdp: false, marketplace, reason: 'Bukan pola PDP Shopee (-i.{shop}.{item})' };
+                return { isPdp: false, marketplace, reason: 'Bukan pola PDP Shopee (-i.{shop}.{item} atau /product/{shop}/{item})' };
             }
 
             // Larang halaman profil toko atau halaman akun
@@ -103,7 +110,7 @@ function classifyUrl(url) {
             }
 
             const firstSegment = segments[0];
-            if (TOKOPEDIA_BLOCKED_FIRST_SEGMENTS.has(firstSegment)) {
+            if (TOKOPEDIA_BLOCKED_FIRST_SEGMENTS.has(firstSegment) || junkSegments.has(firstSegment)) {
                 return { isPdp: false, marketplace, reason: `Segmen pertama '${firstSegment}' adalah halaman sistem/kategori Tokopedia` };
             }
 
@@ -115,10 +122,10 @@ function classifyUrl(url) {
         }
 
         case 'lazada': {
-            // Lazada PDP resmi mengandung pola -i{itemId}-s{skuId} atau berada di dalam /products/
-            const hasLazadaPdpPattern = /-i\d+-s\d+/i.test(pathname) || pathname.startsWith('/products/');
+            // Lazada PDP resmi mengandung pola -i{itemId}-s{skuId}, -i{itemId}, atau berada di dalam /products/
+            const hasLazadaPdpPattern = /-i\d+/i.test(pathname) || pathname.startsWith('/products/');
             if (!hasLazadaPdpPattern) {
-                return { isPdp: false, marketplace, reason: 'Bukan pola PDP Lazada (-i...-s...)' };
+                return { isPdp: false, marketplace, reason: 'Bukan pola PDP Lazada (/products/ atau -i...)' };
             }
 
             if (pathname.startsWith('/shop/') || pathname.startsWith('/helpcenter/')) {
