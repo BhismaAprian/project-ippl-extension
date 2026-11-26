@@ -1,126 +1,114 @@
 /**
- * backend/src/server.js
- * 
- * In-House Resilient Scraping Engine API Server
- * Menyediakan endpoint REST API bagi Chrome Extension untuk melakukan pencarian produk
- * lintas marketplace tanpa ketergantungan pada tab browser visual atau API scraping berbayar.
+ * backend/src/server.js (Task T4.20)
+ *
+ * In-House Multi-Marketplace API Backend (CR-007 / ADR-14)
+ * Berjalan di port 3000 dan menyediakan endpoint REST bagi Chrome Extension
+ * untuk mengekstrak data produk JSON/GraphQL dari Tokopedia, Lazada, dan Blibli.
  */
 
 const express = require('express');
 const cors = require('cors');
-const config = require('./config.js');
-const { fetchHtml } = require('./http-client.js');
-const { runWithLimit } = require('./queue.js');
-const { getParser } = require('./parsers/index.js');
-const { fetchHtmlWithBrowser } = require('./fallback-browser.js');
+const { searchTokopedia } = require('./providers/tokopedia-client.js');
+const { searchLazada } = require('./providers/lazada-client.js');
+const { searchBlibli } = require('./providers/blibli-client.js');
+
+const PORT = parseInt(process.env.PORT || '3000', 10);
+
+const CLIENT_MAP = {
+    tokopedia: searchTokopedia,
+    lazada: searchLazada,
+    blibli: searchBlibli
+};
+
+const SUPPORTED_MARKETPLACES = Object.keys(CLIENT_MAP);
 
 const app = express();
-
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Health Check Endpoint
+// Health check endpoint (NFR-23)
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'OK',
         uptime: process.uptime(),
-        service: 'Shopping Intelligence In-House Scraping Engine',
+        service: 'Shopping Intelligence In-House Multi-Marketplace API',
+        supportedMarketplaces: SUPPORTED_MARKETPLACES,
         timestamp: new Date().toISOString()
     });
 });
 
 /**
- * Helper untuk mengeksekusi pencarian pada satu marketplace
- * @param {string} marketplaceKey - Nama marketplace ('shopee' | 'tokopedia' | 'lazada' | 'blibli')
- * @param {string} keyword - Kata kunci pencarian
- * @param {boolean} [enableBrowserFallback=true] - Izinkan headless browser jika statis kosong
- * @returns {Promise<Array>} Array of candidate objects
+ * Searches one marketplace using the provided or default client map.
+ * @param {string} marketplace
+ * @param {string} query
+ * @param {Record<string, Function>} [clients=CLIENT_MAP]
+ * @returns {Promise<Array<object>>}
  */
-async function searchSingleMarketplace(marketplaceKey, keyword, enableBrowserFallback = true) {
-    const key = (marketplaceKey || 'shopee').toLowerCase();
-    const template = config.searchUrlTemplates[key] || config.searchUrlTemplates.shopee;
-    const searchUrl = template.replace('{q}', encodeURIComponent(keyword));
-    const parser = getParser(key);
-
-    return runWithLimit(key, async () => {
-        let candidates = [];
-        try {
-            // Tahap 1: Ekstraksi cepat melalui static HTTP GET
-            const fetchResult = await fetchHtml(searchUrl);
-            const html = typeof fetchResult === 'string' ? fetchResult : (fetchResult?.html || '');
-            candidates = parser(html);
-        } catch (fetchErr) {
-            console.warn(`[Server] Static fetch error untuk ${key}: ${fetchErr.message}`);
-        }
-
-        // Tahap 2: Fallback ke Headless Browser jika parser statis tidak menghasilkan produk
-        if ((!candidates || candidates.length === 0) && enableBrowserFallback) {
-            try {
-                const renderedHtml = await fetchHtmlWithBrowser(searchUrl);
-                if (renderedHtml) {
-                    candidates = parser(renderedHtml);
-                }
-            } catch (browserErr) {
-                console.warn(`[Server] Browser fallback error untuk ${key}: ${browserErr.message}`);
-            }
-        }
-
-        // Tandai marketplace dan sumber
-        return (candidates || []).map(item => ({
-            ...item,
-            marketplace: key,
-            source: 'in-house-engine'
-        }));
-    });
+async function searchMarketplace(marketplace, query, clients = CLIENT_MAP) {
+    const fn = clients[marketplace];
+    if (typeof fn !== 'function') {
+        throw new Error(`Marketplace tidak didukung: ${marketplace}`);
+    }
+    return fn(query);
 }
 
-// Search Endpoint (POST /api/search)
+/**
+ * Handles POST /api/search requests.
+ * Body: { marketplace: 'tokopedia' | 'lazada' | 'blibli' | 'all', query: string }
+ */
 app.post('/api/search', async (req, res) => {
     const startTime = Date.now();
-    const keyword = (req.body.keyword || req.body.query || '').trim();
-    const targetMarketplace = (req.body.marketplace || '').toLowerCase().trim();
-    const enableBrowserFallback = req.body.useBrowserFallback !== false;
+    const rawQuery = req.body?.query ?? req.body?.keyword ?? '';
+    const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
+    const rawMarketplace = req.body?.marketplace ?? 'all';
+    const marketplace = typeof rawMarketplace === 'string' ? rawMarketplace.trim().toLowerCase() : '';
 
-    if (!keyword) {
+    if (!query) {
         return res.status(400).json({
             success: false,
-            error: 'Parameter keyword atau query wajib disertakan.'
+            error: 'Parameter query wajib disertakan dan tidak boleh kosong.'
+        });
+    }
+
+    if (marketplace !== 'all' && !CLIENT_MAP[marketplace]) {
+        return res.status(400).json({
+            success: false,
+            error: `Marketplace "${marketplace}" tidak dikenal. Gunakan salah satu dari: ${SUPPORTED_MARKETPLACES.join(', ')}, atau all.`
         });
     }
 
     try {
-        let allCandidates = [];
-        const supported = ['shopee', 'tokopedia', 'lazada', 'blibli'];
+        let candidates = [];
+        const errors = {};
 
-        if (targetMarketplace && targetMarketplace !== 'all') {
-            // Pencarian tunggal
-            allCandidates = await searchSingleMarketplace(targetMarketplace, keyword, enableBrowserFallback);
-        } else {
-            // Pencarian simultan ke seluruh marketplace yang didukung
-            const tasks = supported.map(m =>
-                searchSingleMarketplace(m, keyword, enableBrowserFallback)
-                    .catch(err => {
-                        console.warn(`[Server] Gagal mengambil data dari ${m}:`, err.message);
-                        return [];
-                    })
+        if (marketplace === 'all') {
+            const settled = await Promise.allSettled(
+                SUPPORTED_MARKETPLACES.map(m => searchMarketplace(m, query))
             );
-            const results = await Promise.all(tasks);
-            allCandidates = results.flat();
+            settled.forEach((outcome, idx) => {
+                const m = SUPPORTED_MARKETPLACES[idx];
+                if (outcome.status === 'fulfilled' && Array.isArray(outcome.value)) {
+                    candidates.push(...outcome.value);
+                } else if (outcome.status === 'rejected') {
+                    errors[m] = outcome.reason?.message || 'Unknown upstream error';
+                }
+            });
+        } else {
+            candidates = await searchMarketplace(marketplace, query);
         }
 
-        const tookMs = Date.now() - startTime;
         return res.json({
             success: true,
-            count: allCandidates.length,
-            keyword,
-            marketplace: targetMarketplace || 'all',
-            candidates: allCandidates,
-            tookMs
+            count: candidates.length,
+            query,
+            marketplace,
+            candidates,
+            ...(Object.keys(errors).length > 0 ? { warnings: errors } : {}),
+            tookMs: Date.now() - startTime
         });
     } catch (err) {
-        console.error('[Server] Search error:', err);
+        console.error('[Backend:Server] Search error:', err.message);
         return res.status(500).json({
             success: false,
             error: err.message || 'Internal server error saat melakukan pencarian produk.'
@@ -128,23 +116,10 @@ app.post('/api/search', async (req, res) => {
     }
 });
 
-// GET /api/search alias untuk kemudahan inspeksi via browser
-app.get('/api/search', async (req, res) => {
-    const keyword = (req.query.keyword || req.query.q || req.query.query || '').trim();
-    const targetMarketplace = (req.query.marketplace || req.query.m || '').toLowerCase().trim();
-    req.body = { keyword, marketplace: targetMarketplace };
-    return app._router.handle(req, res, () => {});
-});
-
-/**
- * Memulai server listener
- * @param {number} [port] 
- * @returns {Promise<import('http').Server>}
- */
-function startServer(port = config.port) {
+function startServer(port = PORT) {
     return new Promise((resolve) => {
         const server = app.listen(port, () => {
-            console.log(`[ScrapingEngine] Server berjalan di http://localhost:${port}`);
+            console.log(`[InHouseAPI] Server berjalan di http://localhost:${port}`);
             resolve(server);
         });
     });
@@ -157,5 +132,7 @@ if (require.main === module) {
 module.exports = {
     app,
     startServer,
-    searchSingleMarketplace
+    searchMarketplace,
+    CLIENT_MAP,
+    SUPPORTED_MARKETPLACES
 };
