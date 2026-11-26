@@ -109,7 +109,7 @@ Product:
 - Description: "${(product.description || '').substring(0, 300)}"
 
 Instructions:
-1. "clean_query": 3 to 6 words maximum. Must contain ONLY: brand + core product name + critical model/spec (e.g. "iPhone 13 128GB", "Logitech G102 Lightsync", "Novilla Kasur Springbed 90x200"). REMOVE ALL fluff like "PROMO", "MURAH", "ORIGINAL", "GARANSI RESMI", "TERLARIS", store names, location, etc.
+1. "clean_query": Natural concise search phrase (3 to 6 core words only: Brand + Model/Type + Main Size/Variant, e.g. "iPhone 13 128GB", "Logitech G102 Lightsync", "Novilla Kasur Springbed 90x200"). NEVER use boolean minus operators (NO "-minus"), NO quotes, NO excessive punctuation. STRICTLY REMOVE ALL marketing fluff, promos, and spam words ("Promo", "COD", "Free", "Gratis", "Murah", "Original", "Garansi Resmi", "Terlaris", store names, location).
 2. "brand": Brand name if clear, else null.
 3. "category": Main product category in Indonesian. MUST BE PRECISE and SPECIFIC (e.g. "Springbed", "RAM Laptop SODIMM", "Mouse Gaming", "Smartphone"). DO NOT use overly broad categories like "Furnitur", "Perabot Rumah", or "Aksesoris Elektronik".
 4. "core_keywords": Array of 2 to 5 essential keywords that define the core product entity itself (e.g. for Springbed: ["springbed", "kasur", "pocket spring"]; for RAM Laptop: ["ram", "sodimm", "ddr4"]).
@@ -131,7 +131,16 @@ Return ONLY a valid JSON object matching this schema:
 
         const result = await this.requestJson(prompt, groqKey);
         if (result && typeof result === 'object') {
-            const query = (result.clean_query || result.search_query || '').trim();
+            let query = (result.clean_query || result.search_query || '').trim();
+            // Sanitasi: hilangkan operator boolean minus (-kata), tanda kutip, dan simbol liar
+            query = query
+                .replace(/(?:^|\s)-\w+/g, ' ')
+                .replace(/["'“”]/g, ' ')
+                .replace(/\b(?:promo|cod|free|gratis|murah|diskon|terlaris|asli|ori|original)\b/gi, ' ')
+                .replace(/[^\w\s-]/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
             result.clean_query = query;
             result.search_query = query;
             if (!Array.isArray(result.core_keywords)) {
